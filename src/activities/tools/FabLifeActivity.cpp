@@ -64,7 +64,7 @@ void FabLifeActivity::saveGameLog() const {
   if (t > 1600000000) {  // RTC が有効なときだけ日時を付ける
     struct tm ti;
     localtime_r(&t, &ti);
-    char buf[24];
+    char buf[64];  // 範囲外の値でも切り詰めない大きさ
     snprintf(buf, sizeof(buf), " %04d/%02d/%02d %02d:%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour,
              ti.tm_min);
     line += buf;
