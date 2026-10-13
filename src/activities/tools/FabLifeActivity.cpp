@@ -16,9 +16,24 @@
 #include "fontIds.h"
 
 namespace {
-// 7セグ: bit0=a(上) 1=b(右上) 2=c(右下) 3=d(下) 4=e(左下) 5=f(左上) 6=g(中)
-constexpr uint8_t kSeg[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
 constexpr const char* kLogPath = "/fab_life_log.txt";
+
+// 数字の墨のベースラインからの高さ（lifecount_*_bold.h の字形表から。縦の中央寄せに使う）
+constexpr int kDigitInk150 = 226;
+constexpr int kDigitInk100 = 151;
+
+// 前面ボタン（横向きCCWで上から Left, Right, Confirm, Back）と、増減する側・向き
+struct FrontKey {
+  MappedInputManager::Button button;
+  int player;  // 0=左(自分) 1=右(相手)
+  int sign;
+};
+constexpr FrontKey kFrontKeys[4] = {
+    {MappedInputManager::Button::Left, 1, -1},
+    {MappedInputManager::Button::Right, 1, +1},
+    {MappedInputManager::Button::Confirm, 0, +1},
+    {MappedInputManager::Button::Back, 0, -1},
+};
 }  // namespace
 
 void FabLifeActivity::onEnter() {
@@ -30,13 +45,16 @@ void FabLifeActivity::onEnter() {
   }
   lastChangeMs[0] = lastChangeMs[1] = 0;
   state = State::PLAY;
+  heldKey = -1;
+  upArmed = false;
+  firstRender = true;
   requestUpdate();
 }
 
 void FabLifeActivity::setState(const State s) {
   state = s;
-  // 大きい数字の画面に戻るときだけゴースト消去の半リフレッシュ。それ以外は高速更新で軽く保つ
-  forceHalf = (s == State::PLAY);
+  heldKey = -1;
+  upArmed = false;
   requestUpdate();
 }
 
@@ -116,34 +134,53 @@ void FabLifeActivity::loop() {
 void FabLifeActivity::loopPlay() {
   using B = MappedInputManager::Button;
 
-  // 物理ボタンは上から Left, Right, Confirm, Back（横向きCCW）。
-  // 長押しは離した時点の押下時間で判定して ±5。
-  auto step = [this]() { return mappedInput.getHeldTime() >= kLongPressMs ? kLongStep : 1; };
+  // 前面ボタン: 押した瞬間に ±1。押し続けると kLongPressMs で合計 ±5、
+  // 以降 kRepeatMs ごとに ±5 ずつ足す（離すのを待たない）
+  for (int i = 0; i < 4; i++) {
+    if (mappedInput.wasPressed(kFrontKeys[i].button)) {
+      heldKey = i;
+      heldSteps = 0;
+      adjust(kFrontKeys[i].player, kFrontKeys[i].sign);
+      return;
+    }
+  }
+  if (heldKey >= 0) {
+    const FrontKey& k = kFrontKeys[heldKey];
+    if (!mappedInput.isPressed(k.button)) {
+      heldKey = -1;
+    } else {
+      const unsigned long held = mappedInput.getHeldTime();
+      const int due = held >= kLongPressMs ? 1 + static_cast<int>((held - kLongPressMs) / kRepeatMs) : 0;
+      while (heldSteps < due) {
+        adjust(k.player, k.sign * (heldSteps == 0 ? kLongStep - 1 : kLongStep));
+        heldSteps++;
+      }
+    }
+  }
 
-  if (mappedInput.wasReleased(B::Left)) {
-    adjust(1, -step());
-  } else if (mappedInput.wasReleased(B::Right)) {
-    adjust(1, +step());
-  } else if (mappedInput.wasReleased(B::Confirm)) {
-    adjust(0, +step());
-  } else if (mappedInput.wasReleased(B::Back)) {
-    adjust(0, -step());
-  } else if (mappedInput.wasReleased(B::Up)) {
-    if (mappedInput.getHeldTime() >= kMenuHoldMs) {
+  // 側面 Up: 押し続けて kMenuHoldMs に達した時点でメニュー。それより前に離したら履歴
+  if (mappedInput.wasPressed(B::Up)) {
+    upArmed = true;
+  }
+  if (upArmed) {
+    if (!mappedInput.isPressed(B::Up)) {
+      setState(State::HISTORY);
+    } else if (mappedInput.getHeldTime() >= kMenuHoldMs) {
       menuIndex = 0;
       setState(State::MENU);
-    } else {
-      setState(State::HISTORY);
     }
-  } else if (mappedInput.wasReleased(B::Down)) {
+    return;
+  }
+
+  if (mappedInput.wasPressed(B::Down)) {
     finish();
   }
 }
 
 void FabLifeActivity::loopHistory() {
   using B = MappedInputManager::Button;
-  // Up 短押し（または Back / Down）で閉じる
-  if (mappedInput.wasReleased(B::Up) || mappedInput.wasReleased(B::Back) || mappedInput.wasReleased(B::Down)) {
+  // Up（または Back / Down）で閉じる
+  if (mappedInput.wasPressed(B::Up) || mappedInput.wasPressed(B::Back) || mappedInput.wasPressed(B::Down)) {
     setState(State::PLAY);
   }
 }
@@ -151,13 +188,13 @@ void FabLifeActivity::loopHistory() {
 void FabLifeActivity::loopMenu() {
   using B = MappedInputManager::Button;
 
-  if (mappedInput.wasReleased(B::Left)) {
+  if (mappedInput.wasPressed(B::Left)) {
     menuIndex = (menuIndex + kMenuItems - 1) % kMenuItems;
     requestUpdate();
-  } else if (mappedInput.wasReleased(B::Right)) {
+  } else if (mappedInput.wasPressed(B::Right)) {
     menuIndex = (menuIndex + 1) % kMenuItems;
     requestUpdate();
-  } else if (mappedInput.wasReleased(B::Confirm)) {
+  } else if (mappedInput.wasPressed(B::Confirm)) {
     switch (menuIndex) {
       case 0:  // 初期ライフ 20 <-> 40
         startLife = (startLife == 20) ? 40 : 20;
@@ -177,56 +214,37 @@ void FabLifeActivity::loopMenu() {
         finish();
         break;
     }
-  } else if (mappedInput.wasReleased(B::Back) || mappedInput.wasReleased(B::Up)) {
+  } else if (mappedInput.wasPressed(B::Back) || mappedInput.wasPressed(B::Up)) {
     setState(State::PLAY);
-  } else if (mappedInput.wasReleased(B::Down)) {
+  } else if (mappedInput.wasPressed(B::Down)) {
     finish();
   }
 }
 
-// パネル内ローカル座標の矩形を画面座標へ。flipped なら 180° 回転
-void FabLifeActivity::fillLocal(int px, int py, int pw, int ph, bool flipped, int x, int y, int w, int h) const {
-  if (flipped) {
-    renderer.fillRect(px + pw - x - w, py + ph - y - h, w, h, true);
-  } else {
-    renderer.fillRect(px + x, py + y, w, h, true);
-  }
-}
-
+// パネル (px,py,pw,ph) の中央に数字を描く。flipped なら 180° 回して描く
 void FabLifeActivity::drawNumber(int value, int px, int py, int pw, int ph, bool flipped) const {
   char buf[8];
   snprintf(buf, sizeof(buf), "%d", value);
-  const int n = static_cast<int>(strlen(buf));
+  // 2 桁までは 150pt、3 桁は 100pt（どちらも 1 パネルの幅に収まる大きさ）
+  const bool big = strlen(buf) <= 2;
+  const int fontId = big ? LIFECOUNT_150_FONT_ID : LIFECOUNT_100_FONT_ID;
+  const int ink = big ? kDigitInk150 : kDigitInk100;
 
-  // 桁の大きさ: 高さはパネルの 7 割、幅は高さの 0.55、桁間は太さ 2 つ分
-  int dh = ph * 7 / 10;
-  int t = std::max(4, dh / 7);
-  int dw = dh * 55 / 100;
-  int gap = t * 2;
-  const int maxW = pw - 2 * t;
-  if (n * dw + (n - 1) * gap > maxW) {  // 3 桁で収まらなければ縮める
-    const int scale = maxW * 100 / (n * dw + (n - 1) * gap);
-    dh = dh * scale / 100;
-    dw = dw * scale / 100;
-    t = std::max(3, t * scale / 100);
-    gap = t * 2;
+  // 横向きの反対側（CW）に一時的に切り替えると、同じ枠の中に 180° 回った文字が描ける。
+  // CCW の (x,y) は CW では (W-x, H-y) なので、枠もそれに合わせて写す
+  const auto saved = renderer.getOrientation();
+  if (flipped) {
+    renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+    px = renderer.getScreenWidth() - (px + pw);
+    py = renderer.getScreenHeight() - (py + ph);
   }
-  const int total = n * dw + (n - 1) * gap;
-  const int x0 = (pw - total) / 2;
-  const int y0 = (ph - dh) / 2;
-  const int hh = (dh - 3 * t) / 2;
 
-  for (int i = 0; i < n; i++) {
-    const uint8_t s = kSeg[buf[i] - '0'];
-    const int x = x0 + i * (dw + gap);
-    if (s & 0x01) fillLocal(px, py, pw, ph, flipped, x + t, y0, dw - 2 * t, t);                  // a
-    if (s & 0x02) fillLocal(px, py, pw, ph, flipped, x + dw - t, y0 + t, t, hh);                  // b
-    if (s & 0x04) fillLocal(px, py, pw, ph, flipped, x + dw - t, y0 + 2 * t + hh, t, hh);         // c
-    if (s & 0x08) fillLocal(px, py, pw, ph, flipped, x + t, y0 + dh - t, dw - 2 * t, t);          // d
-    if (s & 0x10) fillLocal(px, py, pw, ph, flipped, x, y0 + 2 * t + hh, t, hh);                  // e
-    if (s & 0x20) fillLocal(px, py, pw, ph, flipped, x, y0 + t, t, hh);                           // f
-    if (s & 0x40) fillLocal(px, py, pw, ph, flipped, x + t, y0 + t + hh, dw - 2 * t, t);          // g
-  }
+  const int w = renderer.getTextWidth(fontId, buf);
+  const int bearing = renderer.getTextLeftBearing(fontId, buf);
+  const int baseline = py + (ph - ink) / 2 + ink;
+  renderer.drawText(fontId, px + (pw - w) / 2 - bearing, baseline - renderer.getFontAscenderSize(fontId), buf, true);
+
+  renderer.setOrientation(saved);
 }
 
 void FabLifeActivity::render(RenderLock&&) {
@@ -243,14 +261,9 @@ void FabLifeActivity::render(RenderLock&&) {
       break;
   }
 
-  // 通常は高速更新。ゴースト対策の半リフレッシュは 30 回に 1 回と、数字画面へ戻るときだけ
-  if (forceHalf || ++updatesSinceFull >= 30) {
-    updatesSinceFull = 0;
-    forceHalf = false;
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-  } else {
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-  }
+  // 反応の速さを優先して常に高速更新。開いた直後だけ前の画面の残像を消す
+  renderer.displayBuffer(firstRender ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
+  firstRender = false;
 }
 
 void FabLifeActivity::renderPlay() {

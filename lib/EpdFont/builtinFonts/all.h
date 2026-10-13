@@ -56,3 +56,5 @@
 #include <builtinFonts/wallpaper_8_bold.h>
 #include <builtinFonts/wallpaper_13_bold.h>
 #include <builtinFonts/wallpaper_26_bold.h>
+#include <builtinFonts/lifecount_100_bold.h>
+#include <builtinFonts/lifecount_150_bold.h>

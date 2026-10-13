@@ -81,7 +81,7 @@ class GfxRenderer {
   // Built-in reader font to fall back to when external glyphs are missing.
   int readerFallbackFontId = 0;
   // setExactGlyphFont() で登録されたフォント ID（少数なので固定長配列）
-  static constexpr int MAX_EXACT_GLYPH_FONTS = 4;
+  static constexpr int MAX_EXACT_GLYPH_FONTS = 6;
   int exactGlyphFontIds_[MAX_EXACT_GLYPH_FONTS] = {};
   uint8_t exactGlyphFontCount_ = 0;
   // Skip dark mode inversion for images (cover art should not be inverted)

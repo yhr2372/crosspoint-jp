@@ -153,3 +153,15 @@ ruby -rdigest -e 'puts [
   "./wallpaper_8_bold.h",
 ].map{|f| Digest::SHA256.hexdigest(File.read(f)).to_i(16) }.sum % (2 ** 32) - (2 ** 31)'
 ))"
+
+echo "#define LIFECOUNT_150_FONT_ID ($(
+ruby -rdigest -e 'puts [
+  "./lifecount_150_bold.h",
+].map{|f| Digest::SHA256.hexdigest(File.read(f)).to_i(16) }.sum % (2 ** 32) - (2 ** 31)'
+))"
+
+echo "#define LIFECOUNT_100_FONT_ID ($(
+ruby -rdigest -e 'puts [
+  "./lifecount_100_bold.h",
+].map{|f| Digest::SHA256.hexdigest(File.read(f)).to_i(16) }.sum % (2 ** 32) - (2 ** 31)'
+))"

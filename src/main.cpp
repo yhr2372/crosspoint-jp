@@ -149,6 +149,11 @@ EpdFont wallpaper13Font(&wallpaper_13_bold);
 EpdFontFamily wallpaper13FontFamily(&wallpaper13Font);
 EpdFont wallpaper8Font(&wallpaper_8_bold);
 EpdFontFamily wallpaper8FontFamily(&wallpaper8Font);
+// FaB ライフカウンターの数字（0-9 のみ、1bit、Noto Sans Bold）。2 桁までは 150、3 桁は 100
+EpdFont lifecount150Font(&lifecount_150_bold);
+EpdFontFamily lifecount150FontFamily(&lifecount150Font);
+EpdFont lifecount100Font(&lifecount_100_bold);
+EpdFontFamily lifecount100FontFamily(&lifecount100Font);
 
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
@@ -294,10 +299,14 @@ void setupDisplayAndFonts() {
   renderer.insertFont(WALLPAPER_26_FONT_ID, wallpaper26FontFamily);
   renderer.insertFont(WALLPAPER_13_FONT_ID, wallpaper13FontFamily);
   renderer.insertFont(WALLPAPER_8_FONT_ID, wallpaper8FontFamily);
+  renderer.insertFont(LIFECOUNT_150_FONT_ID, lifecount150FontFamily);
+  renderer.insertFont(LIFECOUNT_100_FONT_ID, lifecount100FontFamily);
   // 内蔵 CJK UI フォントへの ASCII 置き換えを受けず、自前の字形で描く
   renderer.setExactGlyphFont(WALLPAPER_26_FONT_ID);
   renderer.setExactGlyphFont(WALLPAPER_13_FONT_ID);
   renderer.setExactGlyphFont(WALLPAPER_8_FONT_ID);
+  renderer.setExactGlyphFont(LIFECOUNT_150_FONT_ID);
+  renderer.setExactGlyphFont(LIFECOUNT_100_FONT_ID);
 
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
