@@ -1256,7 +1256,7 @@ static const EpdFontData lifecount_100_bold = {
     lifecount_100_boldGlyphs,
     lifecount_100_boldIntervals,
     1,
-    284,
+    255,  // 行送り 284px は uint8_t に入らないので 255 に丸める（1 行しか描かないので使われない）
     223,
     -62,
     false,
