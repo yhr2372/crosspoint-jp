@@ -23,6 +23,8 @@ class FabLifeActivity final : public Activity {
   static constexpr int kSettleMs = 4000;     // この間隔内の連続操作は履歴 1 件にまとめる
   static constexpr size_t kMaxHistory = 60;
   static constexpr int kMenuItems = 4;
+  static constexpr int kPastGames = 5;            // 履歴に並べる直近の試合数
+  static constexpr size_t kLogTailBytes = 4096;  // 起動時に読むログ末尾の大きさ
 
   State state = State::PLAY;
   int life[2] = {20, 20};  // [0]=左(自分) [1]=右(相手)
@@ -33,11 +35,18 @@ class FabLifeActivity final : public Activity {
   int heldSteps = 0;   // その長押しで足した ±5 の回数
   bool upArmed = false;  // 側面 Up を押し始めた（メニューか履歴かは離すか 0.7 秒で決まる）
   bool firstRender = true;
+  bool exitArmed = false;  // 終了ボタンを押した（離したら終了）
+  // 直近の試合（古い順）。合計でも 5×2×60×2 バイト程度
+  std::vector<int16_t> past[kPastGames][2];
+  int pastNumber[kPastGames] = {};
+  int pastCount = 0;
   std::vector<int16_t> history[2];
   unsigned long lastChangeMs[2] = {0, 0};
 
   void adjust(int player, int delta);
   void newGame();
+  void pushPastGame(int number, std::vector<int16_t> (&h)[2]);
+  void loadPastGames();
   void saveGameLog() const;
   bool untouched() const { return history[0].size() == 1 && history[1].size() == 1; }
   void setState(State s);

@@ -6,7 +6,10 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <Logging.h>
+
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -47,7 +50,9 @@ void FabLifeActivity::onEnter() {
   state = State::PLAY;
   heldKey = -1;
   upArmed = false;
+  exitArmed = false;
   firstRender = true;
+  loadPastGames();
   requestUpdate();
 }
 
@@ -55,6 +60,7 @@ void FabLifeActivity::setState(const State s) {
   state = s;
   heldKey = -1;
   upArmed = false;
+  exitArmed = false;
   requestUpdate();
 }
 
@@ -104,9 +110,88 @@ void FabLifeActivity::saveGameLog() const {
   }
 }
 
+// 終わったゲームを直近の履歴（古い順、最大 kPastGames 件）に積む
+void FabLifeActivity::pushPastGame(const int number, std::vector<int16_t> (&h)[2]) {
+  if (pastCount == kPastGames) {
+    for (int i = 1; i < kPastGames; i++) {
+      pastNumber[i - 1] = pastNumber[i];
+      past[i - 1][0].swap(past[i][0]);
+      past[i - 1][1].swap(past[i][1]);
+    }
+    pastCount--;
+  }
+  pastNumber[pastCount] = number;
+  past[pastCount][0].swap(h[0]);
+  past[pastCount][1].swap(h[1]);
+  pastCount++;
+}
+
+// SD のログの末尾から直近 kPastGames 試合を読み込む（アプリを出入りしても履歴が残るように）。
+// 1 行は「game N [日時] | left: 20>14 | right: 20>25」
+void FabLifeActivity::loadPastGames() {
+  pastCount = 0;
+  HalFile file;
+  if (!Storage.exists(kLogPath) || !Storage.openFileForRead("FAB", kLogPath, file)) return;
+
+  // 1 試合は長くても数百バイトなので、末尾 kLogTailBytes に直近 5 試合が収まる。
+  // スタックに置くには大きいので一時的にヒープへ（読み終えたらすぐ解放）
+  const size_t size = file.size();
+  const size_t start = size > kLogTailBytes ? size - kLogTailBytes : 0;
+  auto* buf = static_cast<char*>(malloc(kLogTailBytes + 1));
+  if (!buf) {
+    LOG_ERR("FAB", "malloc failed: %d bytes", static_cast<int>(kLogTailBytes + 1));
+    file.close();
+    return;
+  }
+  file.seekSet(start);
+  const int n = std::max(0, file.read(buf, size - start));
+  file.close();
+  buf[n] = '\0';
+
+  char* p = buf;
+  if (start > 0) {  // 途中から読んだので最初の（欠けた）行は捨てる
+    p = strchr(p, '\n');
+    p = p ? p + 1 : buf + n;
+  }
+  std::vector<int16_t> h[2];
+  int lastNumber = 0;
+  while (*p) {
+    char* eol = strchr(p, '\n');
+    if (eol) *eol = '\0';
+    if (strncmp(p, "game ", 5) == 0) {
+      const int number = atoi(p + 5);
+      const char* keys[2] = {"left:", "right:"};
+      for (int side = 0; side < 2; side++) {
+        h[side].clear();
+        const char* q = strstr(p, keys[side]);
+        if (!q) continue;
+        q += strlen(keys[side]);
+        while (*q && *q != '|') {
+          if (*q >= '0' && *q <= '9') {
+            if (h[side].size() < kMaxHistory) h[side].push_back(static_cast<int16_t>(atoi(q)));
+            while (*q >= '0' && *q <= '9') q++;
+          } else {
+            q++;
+          }
+        }
+      }
+      if (!h[0].empty() && !h[1].empty()) {
+        pushPastGame(number, h);
+        lastNumber = number;
+      }
+    }
+    if (!eol) break;
+    p = eol + 1;
+  }
+  free(buf);
+  buf = nullptr;
+  gameNumber = lastNumber + 1;  // 前回の続きから番号を振る
+}
+
 void FabLifeActivity::newGame() {
   if (!untouched()) {
     saveGameLog();
+    pushPastGame(gameNumber, history);
     gameNumber++;
   }
   life[0] = life[1] = startLife;
@@ -172,7 +257,11 @@ void FabLifeActivity::loopPlay() {
     return;
   }
 
+  // 終了だけは離したときに判定する（押したまま戻ると、離したボタンがホームで効いてしまう）
   if (mappedInput.wasPressed(B::Down)) {
+    exitArmed = true;
+  }
+  if (exitArmed && mappedInput.wasReleased(B::Down)) {
     finish();
   }
 }
@@ -210,13 +299,18 @@ void FabLifeActivity::loopMenu() {
       case 2:  // 履歴
         setState(State::HISTORY);
         break;
-      case 3:  // 終了
-        finish();
+      case 3:  // 終了（離したときに判定）
+        exitArmed = true;
         break;
     }
   } else if (mappedInput.wasPressed(B::Back) || mappedInput.wasPressed(B::Up)) {
     setState(State::PLAY);
   } else if (mappedInput.wasPressed(B::Down)) {
+    exitArmed = true;
+  }
+
+  // 終了だけは離したときに判定する（押したまま戻ると、離したボタンがホームで効いてしまう）
+  if (exitArmed && (mappedInput.wasReleased(B::Confirm) || mappedInput.wasReleased(B::Down))) {
     finish();
   }
 }
@@ -283,31 +377,45 @@ void FabLifeActivity::renderPlay() {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
+// 今のゲームと、直近 kPastGames 試合を横に並べる（左が今、右へ行くほど古い）。
+// 各試合は L（自分）/ R（相手）の 2 列で、長いときは最新の値だけ出す
 void FabLifeActivity::renderHistory() {
   const Rect area = UITheme::getContentArea(renderer);
   const int lh = renderer.getLineHeight(UI_10_FONT_ID);
-  const int half = area.width / 2;
-  const int top = area.y + 10;
+  const int top = area.y + 8;
+  const int games = 1 + pastCount;
+  const int colW = area.width / (1 + kPastGames);
+  const int headTop = top;
+  const int subTop = headTop + lh + 2;
+  const int rowsTop = subTop + lh + 8;
+  const int maxRows = std::max(1, (area.y + area.height - rowsTop - 4) / lh);
 
-  renderer.drawText(UI_10_FONT_ID, area.x + 10, top, "History");
-  renderer.drawText(UI_10_FONT_ID, area.x + 10, top + lh + 6, "LEFT");
-  renderer.drawText(UI_10_FONT_ID, area.x + half + 10, top + lh + 6, "RIGHT");
-  renderer.fillRect(area.x, top + 2 * lh + 10, area.width, 2, true);
-  renderer.fillRect(area.x + half - 1, top + lh + 6, 2, area.height - (lh + 16), true);
+  renderer.fillRect(area.x, rowsTop - 5, colW * games, 2, true);
 
-  const int rowsTop = top + 2 * lh + 18;
-  const int maxRows = std::max(1, (area.y + area.height - rowsTop - 6) / lh);
+  for (int g = 0; g < games; g++) {
+    const int x = area.x + g * colW;
+    const std::vector<int16_t>* h = (g == 0) ? history : past[pastCount - g];
+    char head[16];
+    if (g == 0) {
+      snprintf(head, sizeof(head), "Now");
+    } else {
+      snprintf(head, sizeof(head), "#%d", pastNumber[pastCount - g]);
+    }
+    renderer.drawText(UI_10_FONT_ID, x + 8, headTop, head);
+    renderer.drawText(UI_10_FONT_ID, x + 8, subTop, "L");
+    renderer.drawText(UI_10_FONT_ID, x + 8 + colW / 2, subTop, "R");
+    if (g > 0) renderer.fillRect(x, headTop, 2, area.y + area.height - headTop - 4, true);
 
-  for (int p = 0; p < 2; p++) {
-    const auto& h = history[p];
-    const size_t n = h.size();
-    const size_t first = n > static_cast<size_t>(maxRows) ? n - maxRows : 0;  // 最新 maxRows 件
-    int y = rowsTop;
-    for (size_t i = first; i < n; i++) {
-      char buf[8];
-      snprintf(buf, sizeof(buf), "%d", h[i]);
-      renderer.drawText(UI_10_FONT_ID, area.x + p * half + 10, y, buf);
-      y += lh;
+    for (int p = 0; p < 2; p++) {
+      const size_t n = h[p].size();
+      const size_t first = n > static_cast<size_t>(maxRows) ? n - maxRows : 0;
+      int y = rowsTop;
+      for (size_t i = first; i < n; i++) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", h[p][i]);
+        renderer.drawText(UI_10_FONT_ID, x + 8 + p * (colW / 2), y, buf);
+        y += lh;
+      }
     }
   }
 
