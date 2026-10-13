@@ -34,7 +34,9 @@ inline void applyOrientation(GfxRenderer& renderer, MappedInputManager& input, c
   const auto uiSetting = static_cast<CrossPointSettings::UI_ORIENTATION>(SETTINGS.uiOrientation);
   GfxRenderer::Orientation target;
 
-  if (activity->supportsLandscape()) {
+  if (activity->forceLandscapeCCW()) {
+    target = GfxRenderer::Orientation::LandscapeCounterClockwise;
+  } else if (activity->supportsLandscape()) {
     // Reader: use full orientation setting
     switch (readerSetting) {
       case CrossPointSettings::ORIENTATION::LANDSCAPE_CW:

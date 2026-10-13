@@ -44,6 +44,8 @@ class Activity {
   virtual bool preventAutoSleep() { return false; }
   virtual bool isReaderActivity() const { return false; }
   virtual bool supportsLandscape() const { return false; }
+  // true なら設定に関わらず横向き(CCW)に固定する（ライフカウンターなど）
+  virtual bool forceLandscapeCCW() const { return false; }
 
   // Start a new activity without destroying the current one
   // Note: requestUpdate() will be invoked automatically once resultHandler finishes
