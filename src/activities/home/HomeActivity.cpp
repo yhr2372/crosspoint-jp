@@ -20,11 +20,12 @@
 #include "ReadingStatusHelper.h"
 #include "RecentBooksStore.h"
 #include "activities/settings/AozoraActivity.h"
+#include "activities/tools/FabLifeActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 5;  // File Browser, Recents, Aozora, File transfer, Settings
+  int count = 6;  // File Browser, Recents, Aozora, FaB life, File transfer, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -192,6 +193,7 @@ void HomeActivity::loop() {
     const int recentsIdx = idx++;
     const int opdsLibraryIdx = hasOpdsUrl ? idx++ : -1;
     const int aozoraIdx = idx++;
+    const int fabIdx = idx++;
     const int fileTransferIdx = idx++;
     const int settingsIdx = idx;
 
@@ -205,6 +207,8 @@ void HomeActivity::loop() {
       onOpdsBrowserOpen();
     } else if (menuSelectedIndex == aozoraIdx) {
       onAozoraOpen();
+    } else if (menuSelectedIndex == fabIdx) {
+      onFabOpen();
     } else if (menuSelectedIndex == fileTransferIdx) {
       onFileTransferOpen();
     } else if (menuSelectedIndex == settingsIdx) {
@@ -239,6 +243,8 @@ void HomeActivity::render(RenderLock&&) {
     int aozoraPos = hasOpdsUrl ? 3 : 2;
     menuItems.insert(menuItems.begin() + aozoraPos, tr(STR_AOZORA_BUNKO));
     menuIcons.insert(menuIcons.begin() + aozoraPos, Book);
+    menuItems.insert(menuItems.begin() + aozoraPos + 1, tr(STR_FAB_LIFE));
+    menuIcons.insert(menuIcons.begin() + aozoraPos + 1, Text);
   }
 
   // レイアウト: 縦持ちは表紙タイルの下にメニューを積む。横向き（高さ 480）では
@@ -307,6 +313,10 @@ void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
+
+void HomeActivity::onFabOpen() {
+  startActivityForResult(std::make_unique<FabLifeActivity>(renderer, mappedInput), [this](const ActivityResult&) {});
+}
 
 void HomeActivity::onAozoraOpen() {
   // カバーバッファと最近の本リストを解放（TLSバッファ用にヒープ確保）
