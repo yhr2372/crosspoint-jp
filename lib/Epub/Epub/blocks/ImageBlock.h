@@ -21,6 +21,8 @@ class ImageBlock final : public Block {
   bool isEmpty() override { return false; }
 
   void render(GfxRenderer& renderer, const int x, const int y);
+  // JPEG の表示用キャッシュ（BMP）だけを作る。JPEG 以外や失敗なら false
+  bool ensureJpegBmpCache() const;
   bool serialize(FsFile& file);
   static std::unique_ptr<ImageBlock> deserialize(FsFile& file);
 

@@ -171,30 +171,8 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
     const std::string bmpPath = cachePath + ".bmp";
 
     // Convert JPEG to BMP if not cached yet
-    if (!Storage.exists(bmpPath.c_str())) {
-      FsFile jpegFile;
-      if (!Storage.openFileForRead("IMG", imagePath, jpegFile)) {
-        LOG_ERR("IMG", "Failed to open JPEG for BMP conversion: %s", imagePath.c_str());
-        return;
-      }
-
-      FsFile bmpFile;
-      if (!Storage.openFileForWrite("IMG", bmpPath, bmpFile)) {
-        jpegFile.close();
-        LOG_ERR("IMG", "Failed to create BMP cache file");
-        return;
-      }
-
-      bool success = JpegToBmpConverter::jpegFileToBmpStreamWithSize(jpegFile, bmpFile, width, height);
-      jpegFile.close();
-      bmpFile.close();
-
-      if (!success) {
-        Storage.remove(bmpPath.c_str());
-        LOG_ERR("IMG", "JPEG to BMP conversion failed: %s", imagePath.c_str());
-        return;
-      }
-      LOG_DBG("IMG", "Cached JPEG as BMP: %s", bmpPath.c_str());
+    if (!ensureJpegBmpCache()) {
+      return;
     }
 
     // Render from cached BMP
@@ -228,6 +206,39 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
   }
 
   LOG_DBG("IMG", "Decode successful");
+}
+
+// JPEG を表示用の BMP（この画像の大きさ、2bit）に変換して SD に置く。あれば何もしない。
+// 描かずにキャッシュだけ作れるので、次のページの先読みにも使う
+bool ImageBlock::ensureJpegBmpCache() const {
+  if (!FsHelpers::hasJpgExtension(imagePath)) return false;
+  const std::string bmpPath = getCachePath(imagePath) + ".bmp";
+  if (Storage.exists(bmpPath.c_str())) return true;
+
+  FsFile jpegFile;
+  if (!Storage.openFileForRead("IMG", imagePath, jpegFile)) {
+    LOG_ERR("IMG", "Failed to open JPEG for BMP conversion: %s", imagePath.c_str());
+    return false;
+  }
+
+  FsFile bmpFile;
+  if (!Storage.openFileForWrite("IMG", bmpPath, bmpFile)) {
+    jpegFile.close();
+    LOG_ERR("IMG", "Failed to create BMP cache file");
+    return false;
+  }
+
+  const bool success = JpegToBmpConverter::jpegFileToBmpStreamWithSize(jpegFile, bmpFile, width, height);
+  jpegFile.close();
+  bmpFile.close();
+
+  if (!success) {
+    Storage.remove(bmpPath.c_str());
+    LOG_ERR("IMG", "JPEG to BMP conversion failed: %s", imagePath.c_str());
+    return false;
+  }
+  LOG_DBG("IMG", "Cached JPEG as BMP: %s", bmpPath.c_str());
+  return true;
 }
 
 bool ImageBlock::serialize(FsFile& file) {

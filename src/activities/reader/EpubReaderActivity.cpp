@@ -40,6 +40,14 @@
 #include "util/ScreenshotUtil.h"
 
 namespace {
+// 画像 1 枚だけのページなら、その画像（違えば nullptr）
+const ImageBlock* loneImage(const Page* page) {
+  if (!page || page->elements.size() != 1 || page->elements[0]->getTag() != TAG_PageImage) return nullptr;
+  return &static_cast<const PageImage&>(*page->elements[0]).getImageBlock();
+}
+}  // namespace
+
+namespace {
 // pagesPerRefresh now comes from SETTINGS.getRefreshFrequency()
 constexpr unsigned long skipChapterMs = 700;
 // pages per minute, first item is 1 to prevent division by zero if accessed
@@ -957,10 +965,10 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
     const auto start = millis();
     // 段表示中で、画像 1 枚だけのページなら段を横向きで出す（できなければ普通に描く）
-    const bool loneImage = p->elements.size() == 1 && p->elements[0]->getTag() == TAG_PageImage;
+    const bool isLoneImage = loneImage(p.get()) != nullptr;
     bool renderedTier = false;
-    if (tierMode && loneImage) {
-      renderedTier = renderTier(static_cast<PageImage&>(*p->elements[0]).getImageBlock().getImagePath());
+    if (tierMode && isLoneImage) {
+      renderedTier = renderTier(loneImage(p.get())->getImagePath());
     } else {
       tierCount = 0;
       tierStartAtEnd = false;
@@ -969,7 +977,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
-    if (renderedTier) prefetchNextTierPage(viewportWidth, viewportHeight);
+    prefetchNextPage(viewportWidth, viewportHeight);
   }
   silentIndexNextChapterIfNeeded(viewportWidth, viewportHeight);
   {
@@ -1029,37 +1037,39 @@ bool EpubReaderActivity::loadOrBuildSection(Section& target, const uint16_t view
   return true;
 }
 
-namespace {
-// 画像 1 枚だけのページなら、その画像のパス（違えば空）
-std::string loneImagePath(const Page* page) {
-  if (!page || page->elements.size() != 1 || page->elements[0]->getTag() != TAG_PageImage) return {};
-  return static_cast<const PageImage&>(*page->elements[0]).getImageBlock().getImagePath();
-}
-}  // namespace
-
-// 段表示中、次のページ（同じ章の次、なければ次の章の先頭）が画像だけなら、その段を先に作っておく。
-// 今の段を読んでいる間に済ませるので、次のページに進んだときに展開を待たずに済む
-void EpubReaderActivity::prefetchNextTierPage(const uint16_t viewportWidth, const uint16_t viewportHeight) {
-  if (!tierMode || !section || !epub) return;
-  if (prefetchedSpine == currentSpineIndex && prefetchedPage == section->currentPage) return;
+// 次のページ（同じ章の次、なければ次の章の先頭）を、今のページを表示し終えた裏で用意しておく。
+// 次の章のキャッシュを作り、画像だけのページなら、段表示中は段を、そうでなければ表示用の画像を作る。
+// 次のページに進んだとき、章の準備や JPEG の展開を待たずに済む（漫画は 1 ページ 1 章のことが多い）
+void EpubReaderActivity::prefetchNextPage(const uint16_t viewportWidth, const uint16_t viewportHeight) {
+  if (!section || !epub) return;
+  if (prefetchedSpine == currentSpineIndex && prefetchedPage == section->currentPage &&
+      prefetchedTierMode == tierMode) {
+    return;
+  }
   prefetchedSpine = currentSpineIndex;
   prefetchedPage = section->currentPage;
+  prefetchedTierMode = tierMode;
 
-  std::string path;
+  std::unique_ptr<Page> next;
   if (section->currentPage + 1 < section->pageCount) {
     const int saved = section->currentPage;
     section->currentPage = saved + 1;
-    path = loneImagePath(section->loadPageFromSectionFile().get());
+    next = section->loadPageFromSectionFile();
     section->currentPage = saved;
   } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
     Section nextSection(epub, currentSpineIndex + 1, renderer);
     if (!loadOrBuildSection(nextSection, viewportWidth, viewportHeight) || nextSection.pageCount == 0) return;
     nextSection.currentPage = 0;
-    path = loneImagePath(nextSection.loadPageFromSectionFile().get());
+    next = nextSection.loadPageFromSectionFile();
   }
-  if (!path.empty()) {
-    LOG_DBG("ERS", "Prefetching tiers: %s", path.c_str());
-    image_tiers::prepare(path, tierAreaWidth());
+  const ImageBlock* image = loneImage(next.get());
+  if (!image) return;
+  if (tierMode) {
+    LOG_DBG("ERS", "Prefetching tiers: %s", image->getImagePath().c_str());
+    image_tiers::prepare(image->getImagePath(), tierAreaWidth());
+  } else {
+    LOG_DBG("ERS", "Prefetching image: %s", image->getImagePath().c_str());
+    image->ensureJpegBmpCache();
   }
 }
 
