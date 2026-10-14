@@ -969,6 +969,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
+    if (renderedTier) prefetchNextTierPage(viewportWidth, viewportHeight);
   }
   silentIndexNextChapterIfNeeded(viewportWidth, viewportHeight);
   {
@@ -998,26 +999,67 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
     return;
   }
 
-  const auto& silentDs = SETTINGS.getDirectionSettings(verticalMode);
   Section nextSection(epub, nextSpineIndex, renderer);
-  if (nextSection.loadSectionFile(SETTINGS.getReaderFontId(verticalMode),
-                                  SETTINGS.getReaderLineCompression(verticalMode), silentDs.extraParagraphSpacing,
-                                  silentDs.paragraphAlignment, viewportWidth, viewportHeight,
-                                  silentDs.hyphenationEnabled, silentDs.firstLineIndent, SETTINGS.embeddedStyle,
-                                  SETTINGS.imageRendering, verticalMode, silentDs.charSpacing)) {
-    return;
+  loadOrBuildSection(nextSection, viewportWidth, viewportHeight);
+}
+
+// 章のキャッシュがあれば読み、なければ（画面を出さずに）作る。読めたか作れたら true
+bool EpubReaderActivity::loadOrBuildSection(Section& target, const uint16_t viewportWidth,
+                                            const uint16_t viewportHeight) {
+  const auto& silentDs = SETTINGS.getDirectionSettings(verticalMode);
+  if (target.loadSectionFile(SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
+                             silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth,
+                             viewportHeight, silentDs.hyphenationEnabled, silentDs.firstLineIndent,
+                             SETTINGS.embeddedStyle, SETTINGS.imageRendering, verticalMode, silentDs.charSpacing)) {
+    return true;
   }
 
-  LOG_DBG("ERS", "Silently indexing next chapter: %d", nextSpineIndex);
+  LOG_DBG("ERS", "Silently indexing chapter: %d", target.getSpineIndex());
   const int silentHeadingFontIds[6] = {
       SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
-  nextSection.setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
-  if (!nextSection.createSectionFile(
+  target.setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
+  if (!target.createSectionFile(
           SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
           silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth, viewportHeight,
           silentDs.hyphenationEnabled, silentDs.firstLineIndent, SETTINGS.embeddedStyle, SETTINGS.imageRendering,
           verticalMode, silentDs.charSpacing, nullptr, silentHeadingFontIds, SETTINGS.getTableFontId(verticalMode))) {
-    LOG_ERR("ERS", "Failed silent indexing for chapter: %d", nextSpineIndex);
+    LOG_ERR("ERS", "Failed silent indexing for chapter: %d", target.getSpineIndex());
+    return false;
+  }
+  return true;
+}
+
+namespace {
+// 画像 1 枚だけのページなら、その画像のパス（違えば空）
+std::string loneImagePath(const Page* page) {
+  if (!page || page->elements.size() != 1 || page->elements[0]->getTag() != TAG_PageImage) return {};
+  return static_cast<const PageImage&>(*page->elements[0]).getImageBlock().getImagePath();
+}
+}  // namespace
+
+// 段表示中、次のページ（同じ章の次、なければ次の章の先頭）が画像だけなら、その段を先に作っておく。
+// 今の段を読んでいる間に済ませるので、次のページに進んだときに展開を待たずに済む
+void EpubReaderActivity::prefetchNextTierPage(const uint16_t viewportWidth, const uint16_t viewportHeight) {
+  if (!tierMode || !section || !epub) return;
+  if (prefetchedSpine == currentSpineIndex && prefetchedPage == section->currentPage) return;
+  prefetchedSpine = currentSpineIndex;
+  prefetchedPage = section->currentPage;
+
+  std::string path;
+  if (section->currentPage + 1 < section->pageCount) {
+    const int saved = section->currentPage;
+    section->currentPage = saved + 1;
+    path = loneImagePath(section->loadPageFromSectionFile().get());
+    section->currentPage = saved;
+  } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
+    Section nextSection(epub, currentSpineIndex + 1, renderer);
+    if (!loadOrBuildSection(nextSection, viewportWidth, viewportHeight) || nextSection.pageCount == 0) return;
+    nextSection.currentPage = 0;
+    path = loneImagePath(nextSection.loadPageFromSectionFile().get());
+  }
+  if (!path.empty()) {
+    LOG_DBG("ERS", "Prefetching tiers: %s", path.c_str());
+    image_tiers::prepare(path, tierAreaWidth());
   }
 }
 
@@ -1075,14 +1117,19 @@ void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
 }
 
 // 画像だけのページを段に分け、今の段を横向きで表示する。段に分けられなければ false（普通に描く）
-bool EpubReaderActivity::renderTier(const std::string& imagePath) {
-  // 段の幅＝横向きにしたときの見える範囲の幅
+// 段の幅＝横向き（右倒し）にしたときの見える範囲の幅
+int EpubReaderActivity::tierAreaWidth() const {
   const auto saved = renderer.getOrientation();
   renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   const int areaW = renderer.getScreenWidth() - left - right;
   renderer.setOrientation(saved);
+  return areaW;
+}
+
+bool EpubReaderActivity::renderTier(const std::string& imagePath) {
+  const int areaW = tierAreaWidth();
 
   if (!image_tiers::isPrepared(imagePath, areaW)) {
     GUI.drawPopup(renderer, tr(STR_INDEXING));  // 初めてのページは展開に数秒かかる

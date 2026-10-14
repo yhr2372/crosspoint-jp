@@ -37,6 +37,8 @@ class EpubReaderActivity final : public Activity {
   int tierIndex = 0;              // 今の段
   int tierCount = 0;              // 今のページの段数（段表示でない／画像だけのページでないなら 0）
   bool tierStartAtEnd = false;    // 前のページへ戻ったときは最後の段から出す
+  int prefetchedSpine = -1;       // 次のページの段を先に作り終えた位置（同じページで繰り返さない）
+  int prefetchedPage = -1;
   // 画像だけのページを広げる枠（ページ座標）。余白を除いた本体の見える範囲
   int16_t fullBleedX = 0;
   int16_t fullBleedY = 0;
@@ -55,6 +57,9 @@ class EpubReaderActivity final : public Activity {
   int footnoteDepth = 0;
 
   bool renderTier(const std::string& imagePath);
+  int tierAreaWidth() const;
+  void prefetchNextTierPage(uint16_t viewportWidth, uint16_t viewportHeight);
+  bool loadOrBuildSection(Section& target, uint16_t viewportWidth, uint16_t viewportHeight);
   void drawTierBitmap(const std::string& path) const;
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);

@@ -259,7 +259,13 @@ int prepare(const std::string& imagePath, const int targetWidth) {
   const int rowBytes = (bmpWidth * 2 + 31) / 32 * 4;
 
   std::vector<Band> tiers;
-  bool ok = findTiers(bmp, bmpWidth, bmpHeight, rowBytes, tiers);
+  bool ok = true;
+  if (bmpHeight * 10 < bmpWidth * 12) {
+    // 縦長でない絵（見開き・横長の一枚絵）は分けず、1 枚まるごとを横向きで出す
+    tiers.push_back({0, bmpHeight});
+  } else {
+    ok = findTiers(bmp, bmpWidth, bmpHeight, rowBytes, tiers);
+  }
   for (size_t i = 0; ok && i < tiers.size(); i++) {
     ok = writeTier(bmp, header, rowBytes, tiers[i], tierPath(imagePath, static_cast<int>(i)));
   }
