@@ -44,7 +44,8 @@ bool readMeta(const std::string& imagePath, int& count, int& width) {
   char buf[32] = {};
   f.read(buf, sizeof(buf) - 1);
   f.close();
-  return sscanf(buf, "%d,%d", &count, &width) == 2 && count > 0 && count <= MAX_TIERS;
+  // 段数 0 は「段に分けない絵」（ポスターなど）として覚えておく
+  return sscanf(buf, "%d,%d", &count, &width) == 2 && count >= 0 && count <= MAX_TIERS;
 }
 
 // ページ画像を横 targetWidth（元の幅を超えない）の 2bit BMP に展開する
@@ -86,7 +87,9 @@ struct Band {
 
 // 展開した BMP を 1 行ずつ読み、段の上下（行番号、bottom は含まない）を求める。
 // 手描きの枠線はわずかに斜めなので、前後 k 行を重ねてから「黒が横に何画素続くか」を数える
-bool findTiers(HalFile& bmp, const int width, const int height, const int rowBytes, std::vector<Band>& tiers) {
+bool findTiers(HalFile& bmp, const int width, const int height, const int rowBytes, std::vector<Band>& tiers,
+               bool& illustration) {
+  illustration = false;
   const int k = std::max(2, height / 400);
   const int window = 2 * k + 1;
   const int maskBytes = (width + 7) / 8;
@@ -126,6 +129,7 @@ bool findTiers(HalFile& bmp, const int width, const int height, const int rowByt
 
   int firstInk = -1;
   int lastInk = -1;
+  int64_t darkTotal = 0;
   bool readOk = true;
   for (int y = 0; y < height; y++) {
     if (bmp.read(row, rowBytes) != rowBytes) {
@@ -136,10 +140,12 @@ bool findTiers(HalFile& bmp, const int width, const int height, const int rowByt
     memset(m, 0, maskBytes);
     int dark = 0;
     for (int x = 0; x < width; x++) {
-      if (((row[x >> 2] >> (6 - 2 * (x & 3))) & 0x03) == 0) {  // 0 = 黒
+      const uint8_t v = (row[x >> 2] >> (6 - 2 * (x & 3))) & 0x03;  // 0 黒 / 1 濃い灰 / 2 薄い灰 / 3 白
+      if (v == 0) {
         m[x >> 3] |= 0x80 >> (x & 7);
         dark++;
       }
+      if (v <= 1) darkTotal++;
     }
     if (dark > width / 100) {
       if (firstInk < 0) firstInk = y;
@@ -151,7 +157,11 @@ bool findTiers(HalFile& bmp, const int width, const int height, const int rowByt
     for (int c = std::max(0, height - k); c < height; c++) runs[c] = static_cast<uint16_t>(longestRunAround(c));
   }
 
-  if (readOk && firstInk >= 0) {
+  // 黒と濃い灰が 35% を超える絵（暗いポスターなどの一枚絵）は段に分けず、普通に表示させる。
+  // 漫画のページは夜の場面でも 1 割ほど（実測）なので、十分に離れている
+  if (readOk && darkTotal * 100 > static_cast<int64_t>(width) * height * 35) illustration = true;
+
+  if (readOk && firstInk >= 0 && !illustration) {
     // 枠の幅（最長の横線）の 8 割以上続く行を「線」とし、近い行どうしを 1 本にまとめる
     int frame = 0;
     for (int y = 0; y < height; y++) frame = std::max<int>(frame, runs[y]);
@@ -181,6 +191,25 @@ bool findTiers(HalFile& bmp, const int width, const int height, const int rowByt
       tiers.clear();
       const int span = lastInk + 1 - firstInk;
       for (int t = 0; t < 3; t++) tiers.push_back({firstInk + span * t / 3, firstInk + span * (t + 1) / 3});
+    } else {
+      // 段の下の枠がコマごとに段違いだと横一直線にならず、2 段が 1 段にまとまる。
+      // ページの 45% より高い段は、段の中ほど（25〜75%）で横線がいちばん長く続く行で 2 つに分ける
+      std::vector<Band> split;
+      split.reserve(MAX_TIERS);
+      for (const Band& t : tiers) {
+        const int h = t.bottom - t.top;
+        if (h > height * 45 / 100 && split.size() + 2 <= static_cast<size_t>(MAX_TIERS)) {
+          int cut = t.top + h / 4;
+          for (int y = t.top + h / 4; y < t.top + h * 3 / 4; y++) {
+            if (runs[y] > runs[cut]) cut = y;
+          }
+          split.push_back({t.top, std::min(height, cut + k + 1)});
+          split.push_back({std::max(0, cut - k), t.bottom});
+        } else if (split.size() < static_cast<size_t>(MAX_TIERS)) {
+          split.push_back(t);
+        }
+      }
+      tiers.swap(split);
     }
   }
 
@@ -192,7 +221,7 @@ bool findTiers(HalFile& bmp, const int width, const int height, const int rowByt
   merged = nullptr;
   free(runs);
   runs = nullptr;
-  return readOk && !tiers.empty();
+  return readOk && (illustration || !tiers.empty());
 }
 
 // 展開した BMP の [top, bottom) 行を、ヘッダの高さだけ書き換えた別の BMP に写す
@@ -260,11 +289,12 @@ int prepare(const std::string& imagePath, const int targetWidth) {
 
   std::vector<Band> tiers;
   bool ok = true;
+  bool illustration = false;
   if (bmpHeight * 10 < bmpWidth * 12) {
     // 縦長でない絵（見開き・横長の一枚絵）は分けず、1 枚まるごとを横向きで出す
     tiers.push_back({0, bmpHeight});
   } else {
-    ok = findTiers(bmp, bmpWidth, bmpHeight, rowBytes, tiers);
+    ok = findTiers(bmp, bmpWidth, bmpHeight, rowBytes, tiers, illustration);
   }
   for (size_t i = 0; ok && i < tiers.size(); i++) {
     ok = writeTier(bmp, header, rowBytes, tiers[i], tierPath(imagePath, static_cast<int>(i)));
