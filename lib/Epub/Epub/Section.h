@@ -21,6 +21,13 @@ class Section {
                               bool firstLineIndent, bool embeddedStyle, uint8_t imageRendering, bool verticalMode,
                               uint8_t charSpacing);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
+  void expandLoneImage(Page& page) const;
+
+  // 画像 1 枚だけのページを広げる先（ページ座標。余白の外まで含むので負になりうる）。w==0 なら広げない
+  int16_t fullBleedX = 0;
+  int16_t fullBleedY = 0;
+  uint16_t fullBleedW = 0;
+  uint16_t fullBleedH = 0;
 
  public:
   uint16_t pageCount = 0;
@@ -32,6 +39,13 @@ class Section {
         renderer(renderer),
         filePath(epub->getCachePath() + "/sections/" + std::to_string(spineIndex) + ".bin") {}
   ~Section() = default;
+  // createSectionFile() の前に呼ぶ。画像だけのページはこの枠いっぱいに収め直す
+  void setFullBleedArea(int16_t x, int16_t y, uint16_t w, uint16_t h) {
+    fullBleedX = x;
+    fullBleedY = y;
+    fullBleedW = w;
+    fullBleedH = h;
+  }
   bool loadSectionFile(int fontId, float lineCompression, bool extraParagraphSpacing, uint8_t paragraphAlignment,
                        uint16_t viewportWidth, uint16_t viewportHeight, bool hyphenationEnabled, bool firstLineIndent,
                        bool embeddedStyle, uint8_t imageRendering, bool verticalMode, uint8_t charSpacing);

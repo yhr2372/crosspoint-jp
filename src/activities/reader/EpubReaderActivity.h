@@ -30,6 +30,11 @@ class EpubReaderActivity final : public Activity {
   bool pendingScreenshot = false;
   bool skipNextButtonCheck = false;  // Skip button processing for one frame after subactivity exit
   bool automaticPageTurnActive = false;
+  // 画像だけのページを広げる枠（ページ座標）。余白を除いた本体の見える範囲
+  int16_t fullBleedX = 0;
+  int16_t fullBleedY = 0;
+  uint16_t fullBleedW = 0;
+  uint16_t fullBleedH = 0;
   bool verticalMode = false;  // resolved effective writing mode for current book
 
   // Footnote support

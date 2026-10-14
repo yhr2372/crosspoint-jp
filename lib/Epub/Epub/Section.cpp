@@ -1,6 +1,7 @@
 #include "Section.h"
 
 #include <Arduino.h>
+#include <algorithm>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -9,6 +10,7 @@
 #include "Epub/css/CssSelectorUsage.h"
 #include "Page.h"
 #include "SectionBuildPerf.h"
+#include "converters/ImageDecoderFactory.h"
 #include "hyphenation/Hyphenator.h"
 #include "parsers/ChapterHtmlSlimParser.h"
 
@@ -31,7 +33,8 @@ namespace {
 //             <pre> の枠の上辺・下辺を折り返した行に引かない、ぶら下げ幅の補正を textIndent だけに。
 // Version 42: <pre> の上下のアキを最初の行と最後の行だけに寄せる（CSS の padding が行ごとに
 //             掛かって 1 行おきに空き、枠が途切れていた）。同じくレイアウト結果のみの変更。
-constexpr uint8_t SECTION_FILE_VERSION = 42;
+// Version 43: 画像 1 枚だけのページは、余白を無視して画面いっぱい（元の解像度まで）に収める。
+constexpr uint8_t SECTION_FILE_VERSION = 43;
 // Minimum free heap required before attempting to build section pages.
 // Section building involves heavy allocations (Page, TextBlock, PageLine, etc.)
 // and on ESP32 without C++ exceptions, allocation failure calls abort().
@@ -42,7 +45,33 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(uint32_t) + sizeof(uint32_t);
 }  // namespace
 
+// 画像 1 枚だけのページなら、その画像を fullBleed の枠いっぱいに（縦横比を保ち、元の解像度を
+// 超えない範囲で）大きくして中央に置き直す。漫画など、余白が無駄になるページのため。
+void Section::expandLoneImage(Page& page) const {
+  if (fullBleedW == 0 || fullBleedH == 0 || page.elements.size() != 1) return;
+  if (page.elements[0]->getTag() != TAG_PageImage) return;
+  const auto& image = static_cast<PageImage&>(*page.elements[0]).getImageBlock();
+
+  ImageDimensions dims = {0, 0};
+  ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(image.getImagePath());
+  if (!decoder || !decoder->getDimensions(image.getImagePath(), dims) || dims.width <= 0 || dims.height <= 0) return;
+
+  // 拡大はしない（デコーダは縮小前提。元より大きくすると画質も上がらない）
+  float scale = std::min(static_cast<float>(fullBleedW) / dims.width, static_cast<float>(fullBleedH) / dims.height);
+  if (scale > 1.0f) scale = 1.0f;
+  const int w = std::max(1, static_cast<int>(dims.width * scale));
+  const int h = std::max(1, static_cast<int>(dims.height * scale));
+  if (w <= image.getWidth() && h <= image.getHeight()) return;  // 今より大きくならないなら触らない
+
+  const int x = fullBleedX + (fullBleedW - w) / 2;
+  const int y = fullBleedY + (fullBleedH - h) / 2;
+  auto block = std::make_shared<ImageBlock>(image.getImagePath(), static_cast<int16_t>(w), static_cast<int16_t>(h));
+  page.elements[0] = std::make_shared<PageImage>(std::move(block), static_cast<int16_t>(x), static_cast<int16_t>(y));
+  LOG_DBG("SCT", "Lone image page expanded to %dx%d at %d,%d", w, h, x, y);
+}
+
 uint32_t Section::onPageComplete(std::unique_ptr<Page> page) {
+  expandLoneImage(*page);
   if (!file) {
     LOG_ERR("SCT", "File not open for writing page %d", pageCount);
     return 0;

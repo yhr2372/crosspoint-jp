@@ -740,6 +740,19 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   const uint16_t viewportWidth = renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight;
   const uint16_t viewportHeight = renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom;
 
+  // 画像だけのページは「画面余白」を無視して、本体の見える範囲いっぱいに出す。
+  // ステータスバー（または自動めくりの表示）がある間は、下はそのぶんだけ空けておく
+  {
+    int bezelTop, bezelRight, bezelBottom, bezelLeft;
+    renderer.getOrientedViewableTRBL(&bezelTop, &bezelRight, &bezelBottom, &bezelLeft);
+    const bool reserveBottom = statusBarHeight > 0 || automaticPageTurnActive;
+    const int bottom = reserveBottom ? orientedMarginBottom : bezelBottom;
+    fullBleedX = static_cast<int16_t>(bezelLeft - orientedMarginLeft);
+    fullBleedY = static_cast<int16_t>(bezelTop - orientedMarginTop);
+    fullBleedW = static_cast<uint16_t>(renderer.getScreenWidth() - bezelLeft - bezelRight);
+    fullBleedH = static_cast<uint16_t>(renderer.getScreenHeight() - bezelTop - bottom);
+  }
+
   if (!section) {
     // Ensure the correct SD card font is loaded for the resolved writing direction.
     // goToReader() calls ensureSdFontLoaded(false) before verticalMode is known,
@@ -810,6 +823,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       const int headingFontIds[6] = {
           SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
 
+      section->setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
       if (!section->createSectionFile(SETTINGS.getReaderFontId(verticalMode), lineCompression, ds.extraParagraphSpacing,
                                       ds.paragraphAlignment, viewportWidth, viewportHeight, ds.hyphenationEnabled,
                                       ds.firstLineIndent, SETTINGS.embeddedStyle, SETTINGS.imageRendering, verticalMode,
@@ -947,6 +961,7 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
   LOG_DBG("ERS", "Silently indexing next chapter: %d", nextSpineIndex);
   const int silentHeadingFontIds[6] = {
       SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
+  nextSection.setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
   if (!nextSection.createSectionFile(
           SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
           silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth, viewportHeight,
