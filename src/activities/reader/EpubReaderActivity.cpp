@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <Bitmap.h>
 #include <Epub/InlineImage.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
@@ -12,12 +13,15 @@
 #include <Logging.h>
 #include <esp_system.h>
 
+#include <algorithm>
+
 #include "BookFileHelper.h"
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderFootnotesActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
+#include "ImageTiers.h"
 #include "KOReaderCredentialStore.h"
 #include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
@@ -168,6 +172,21 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  // 決定ボタンの長押しで段表示を切り替える（押している間に切り替え、離したときはメニューを開かない）
+  if (mappedInput.isPressed(MappedInputManager::Button::Confirm) && !confirmLongFired &&
+      mappedInput.getHeldTime() >= TIER_TOGGLE_MS) {
+    confirmLongFired = true;
+    tierMode = !tierMode;
+    tierIndex = 0;
+    tierStartAtEnd = false;
+    requestUpdate();
+    return;
+  }
+  if (confirmLongFired) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) confirmLongFired = false;
+    return;
+  }
+
   // Enter reader menu activity.
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     // Snapshot reader state under render lock. This avoids racing with the
@@ -227,6 +246,26 @@ void EpubReaderActivity::loop() {
   (void)fromTilt;
   if (!prevTriggered && !nextTriggered) {
     return;
+  }
+
+  // 段表示中は、ページ送りでまず段を進める。最後の段の次（最初の段の前）で普通のページ送りになる。
+  // 縦書き（右から左）ではページ送りのボタンが入れ替わるので、進む向きもそれに合わせる
+  if (tierMode && tierCount > 0) {
+    const bool forward = verticalMode ? prevTriggered : nextTriggered;
+    if (forward && tierIndex < tierCount - 1) {
+      tierIndex++;
+      lastPageTurnTime = millis();
+      requestUpdate();
+      return;
+    }
+    if (!forward && tierIndex > 0) {
+      tierIndex--;
+      lastPageTurnTime = millis();
+      requestUpdate();
+      return;
+    }
+    tierIndex = 0;
+    tierStartAtEnd = !forward;
   }
 
   // At end of the book, forward button goes home and back button returns to last page.
@@ -917,7 +956,18 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     currentPageFootnotes = std::move(p->footnotes);
 
     const auto start = millis();
-    renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    // 段表示中で、画像 1 枚だけのページなら段を横向きで出す（できなければ普通に描く）
+    const bool loneImage = p->elements.size() == 1 && p->elements[0]->getTag() == TAG_PageImage;
+    bool renderedTier = false;
+    if (tierMode && loneImage) {
+      renderedTier = renderTier(static_cast<PageImage&>(*p->elements[0]).getImageBlock().getImagePath());
+    } else {
+      tierCount = 0;
+      tierStartAtEnd = false;
+    }
+    if (!renderedTier) {
+      renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+    }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
   }
   silentIndexNextChapterIfNeeded(viewportWidth, viewportHeight);
@@ -1001,6 +1051,77 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
     LOG_ERR("ERS", "Could not save progress!");
   }
 }
+// 段の BMP を横向き（本体を右に倒した向き＝LandscapeClockwise）で、見える範囲いっぱいに中央寄せで描く
+void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
+  HalFile file;
+  if (!Storage.openFileForRead("ERS", path, file)) return;
+  Bitmap bmp(file);
+  if (bmp.parseHeaders() == BmpReaderError::Ok) {
+    const auto saved = renderer.getOrientation();
+    renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+    int top, right, bottom, left;
+    renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+    const int areaW = renderer.getScreenWidth() - left - right;
+    const int areaH = renderer.getScreenHeight() - top - bottom;
+    // drawBitmap は縮小だけするので、描かれる大きさを同じ式で求めて中央に置く
+    const float scale = std::min(1.0f, std::min(static_cast<float>(areaW) / bmp.getWidth(),
+                                                static_cast<float>(areaH) / bmp.getHeight()));
+    const int w = static_cast<int>(bmp.getWidth() * scale);
+    const int h = static_cast<int>(bmp.getHeight() * scale);
+    renderer.drawBitmap(bmp, left + (areaW - w) / 2, top + (areaH - h) / 2, areaW, areaH);
+    renderer.setOrientation(saved);
+  }
+  file.close();
+}
+
+// 画像だけのページを段に分け、今の段を横向きで表示する。段に分けられなければ false（普通に描く）
+bool EpubReaderActivity::renderTier(const std::string& imagePath) {
+  // 段の幅＝横向きにしたときの見える範囲の幅
+  const auto saved = renderer.getOrientation();
+  renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+  int top, right, bottom, left;
+  renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+  const int areaW = renderer.getScreenWidth() - left - right;
+  renderer.setOrientation(saved);
+
+  if (!image_tiers::isPrepared(imagePath, areaW)) {
+    GUI.drawPopup(renderer, tr(STR_INDEXING));  // 初めてのページは展開に数秒かかる
+  }
+  tierCount = image_tiers::prepare(imagePath, areaW);
+  if (tierCount <= 0) {
+    tierCount = 0;
+    tierStartAtEnd = false;
+    return false;
+  }
+  if (tierStartAtEnd) {
+    tierIndex = tierCount - 1;
+    tierStartAtEnd = false;
+  }
+  tierIndex = std::clamp(tierIndex, 0, tierCount - 1);
+  const std::string path = image_tiers::tierPath(imagePath, tierIndex);
+
+  renderer.clearScreen();
+  drawTierBitmap(path);
+  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+
+  // 普通の画像ページと同じく、アンチエイリアスが有効なら灰色の 2 パスを重ねる
+  renderer.storeBwBuffer();
+  if (SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing) {
+    renderer.clearScreen(0x00);
+    renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+    drawTierBitmap(path);
+    renderer.copyGrayscaleLsbBuffers();
+    renderer.clearScreen(0x00);
+    renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+    drawTierBitmap(path);
+    renderer.copyGrayscaleMsbBuffers();
+    renderer.displayGrayBuffer();
+    renderer.setRenderMode(GfxRenderer::BW);
+  }
+  renderer.restoreBwBuffer();
+  return true;
+}
+
 void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                         const int orientedMarginRight, const int orientedMarginBottom,
                                         const int orientedMarginLeft) {

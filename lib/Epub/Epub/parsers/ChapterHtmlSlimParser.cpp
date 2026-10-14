@@ -482,12 +482,12 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
             // Extract image to cache file
             FsFile cachedImageFile;
             bool extractSuccess = false;
-            // 前回のレイアウトで作った変換済みキャッシュ（.bmp / .pxc）は大きさが違いうるので捨てる。
+            // 前回のレイアウトで作った変換済みキャッシュ（.bmp / .pxc / 段表示の .tiers）は捨てる。
             // .bmp は存在だけで使われるため、残すと古い大きさのまま描かれる
             {
               const size_t dot = cachedImagePath.rfind('.');
               const std::string stem = dot != std::string::npos ? cachedImagePath.substr(0, dot) : cachedImagePath;
-              for (const char* ext : {".pxc", ".pxc.bmp"}) {
+              for (const char* ext : {".pxc", ".pxc.bmp", ".tiers"}) {
                 const std::string stale = stem + ext;
                 if (Storage.exists(stale.c_str())) Storage.remove(stale.c_str());
               }
