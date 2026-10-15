@@ -1,5 +1,7 @@
 #pragma once
 
+#include <HalStorage.h>
+
 #include <cstdint>
 
 #include "EpdFont.h"
@@ -181,7 +183,10 @@ class SdCardFont {
   OverflowContext overflowCtx_[MAX_STYLES] = {};
 
   // Shared on-demand overflow buffer (ring buffer of glyphs loaded via glyphMissHandler)
-  static constexpr uint32_t OVERFLOW_CAPACITY = 8;
+  // 先読み（1 ページ MAX_PAGE_GLYPHS 字まで）に入らなかった字の置き場。漢字の多いページは 1 ページで
+  // 150〜200 字種になり、8 では足りずに同じ字を描くたび .cpfont から読み直していた（1 パス数秒）。
+  // 1 枠は字形の情報と小さなビットマップ（数十バイト）だけなので、1 ページぶんが収まる数にする
+  static constexpr uint32_t OVERFLOW_CAPACITY = 64;
   struct OverflowEntry {
     EpdGlyph glyph;
     uint8_t* bitmap = nullptr;
@@ -191,6 +196,8 @@ class SdCardFont {
   OverflowEntry overflow_[OVERFLOW_CAPACITY] = {};
   uint32_t overflowCount_ = 0;
   uint32_t overflowNext_ = 0;
+  // 先読みに入らなかった字を読むときの .cpfont。字ごとに開き直すと毎回パスをたどって探すので開いたままにする
+  HalFile overflowFile_;
 
   // Compact advance-only table for layout measurement (per-style).
   // Built by buildAdvanceTable(), queried by getAdvance().

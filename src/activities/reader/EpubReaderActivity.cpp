@@ -1047,9 +1047,10 @@ void EpubReaderActivity::drawDebugTimings() {
 
   char logLine[320];
   const int len =
-      snprintf(logLine, sizeof(logLine), "spine=%d page=%d tier=%d %s | %s | pre:%s | %s\n", currentSpineIndex,
-               section ? section->currentPage : -1, tierMode ? tierIndex : -1, line1, line2,
-               debugPrefetchNote[0] ? debugPrefetchNote : "-", debugRenderNote[0] ? debugRenderNote : "-");
+      snprintf(logLine, sizeof(logLine), "spine=%d page=%d tier=%d %s | %s | pre:%s | %s | heap %d max %d\n",
+               currentSpineIndex, section ? section->currentPage : -1, tierMode ? tierIndex : -1, line1, line2,
+               debugPrefetchNote[0] ? debugPrefetchNote : "-", debugRenderNote[0] ? debugRenderNote : "-",
+               static_cast<int>(ESP.getFreeHeap()), static_cast<int>(ESP.getMaxAllocHeap()));
   if (len > 0) {
     auto file = Storage.open("/.crosspoint/read_perf.log", O_WRONLY | O_CREAT | O_APPEND);
     if (file) {
@@ -1247,9 +1248,9 @@ bool EpubReaderActivity::renderTier(const std::string& imagePath) {
   drawTierBitmap(file);
   ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
 
-  // 普通の画像ページと同じく、アンチエイリアスが有効なら灰色の 2 パスを重ねる
-  renderer.storeBwBuffer();
-  if (SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing) {
+  // 普通の画像ページと同じく、アンチエイリアスが有効なら灰色の 2 パスを重ねる（白黒を保存できたときだけ）
+  const bool bwStored = renderer.storeBwBuffer();
+  if (bwStored && SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing) {
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     drawTierBitmap(file);
@@ -1261,7 +1262,7 @@ bool EpubReaderActivity::renderTier(const std::string& imagePath) {
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
   }
-  renderer.restoreBwBuffer();
+  if (bwStored) renderer.restoreBwBuffer();
   file.close();
   return true;
 }
@@ -1339,12 +1340,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
   const auto tDisplay = millis();
 
-  // Save bw buffer to reset buffer state after grayscale data sync
-  renderer.storeBwBuffer();
+  // Save bw buffer to reset buffer state after grayscale data sync.
+  // 保存できなかった（メモリ不足）ときは灰色を重ねない。重ねると白黒の画面に戻せず、フレームバッファが
+  // 灰色用の中身のまま残って、次の書き換えで黒地に白い点の画面になる
+  const bool bwStored = renderer.storeBwBuffer();
   const auto tBwStore = millis();
+  if (!bwStored) LOG_ERR("ERS", "BW buffer store failed (free heap %d), skipping grayscale", ESP.getFreeHeap());
 
   // Grayscale rendering - skip for external fonts (1-bit bitmap, no antialiasing benefit)
-  if (grayscaleText) {
+  if (grayscaleText && bwStored) {
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, SETTINGS.getReaderFontId(verticalMode), orientedMarginLeft, orientedMarginTop,
@@ -1378,7 +1382,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
              tDisplay - tBwRender, tGrayLsb - tBwStore, tGrayMsb - tGrayLsb, tGrayDisplay - tGrayMsb);
   } else {
     // restore the bw data
-    renderer.restoreBwBuffer();
+    if (bwStored) renderer.restoreBwBuffer();
     const auto tBwRestore = millis();
 
     const auto tEnd = millis();

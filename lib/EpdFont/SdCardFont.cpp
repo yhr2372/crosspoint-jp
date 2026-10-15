@@ -103,6 +103,7 @@ void SdCardFont::clearOverflow() {
   }
   overflowCount_ = 0;
   overflowNext_ = 0;
+  if (overflowFile_.isOpen()) overflowFile_.close();
 }
 
 // --- Per-style kern/ligature ---
@@ -1201,19 +1202,21 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
   self->overflowNext_ = (slot + 1) % OVERFLOW_CAPACITY;
 
   // Read glyph metadata into temporary
-  FsFile file;
-  if (!Storage.openFileForRead("SDCF", self->filePath_, file)) {
-    LOG_ERR("SDCF", "Overflow: failed to open .cpfont");
-    if (!wasAtCapacity) self->overflowCount_--;
-    return nullptr;
+  if (!self->overflowFile_.isOpen()) {
+    self->overflowFile_ = Storage.open(self->filePath_);
+    if (!self->overflowFile_.isOpen()) {
+      LOG_ERR("SDCF", "Overflow: failed to open .cpfont");
+      if (!wasAtCapacity) self->overflowCount_--;
+      return nullptr;
+    }
   }
+  FsFile& file = self->overflowFile_;
 
   EpdGlyph tempGlyph;
   uint32_t glyphFileOff = s.glyphsFileOffset + static_cast<uint32_t>(globalIdx) * sizeof(EpdGlyph);
   file.seekSet(glyphFileOff);
   if (file.read(reinterpret_cast<uint8_t*>(&tempGlyph), sizeof(EpdGlyph)) != sizeof(EpdGlyph)) {
     LOG_ERR("SDCF", "Overflow: failed to read glyph metadata for U+%04X style %u", codepoint, styleIdx);
-    file.close();
     if (!wasAtCapacity) self->overflowCount_--;
     return nullptr;
   }
@@ -1224,7 +1227,6 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     tempBitmap = new (std::nothrow) uint8_t[tempGlyph.dataLength];
     if (!tempBitmap) {
       LOG_ERR("SDCF", "Overflow: failed to allocate %u bytes for U+%04X bitmap", tempGlyph.dataLength, codepoint);
-      file.close();
       if (!wasAtCapacity) self->overflowCount_--;
       return nullptr;
     }
@@ -1232,13 +1234,10 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     if (file.read(tempBitmap, tempGlyph.dataLength) != static_cast<int>(tempGlyph.dataLength)) {
       LOG_ERR("SDCF", "Overflow: failed to read bitmap for U+%04X", codepoint);
       delete[] tempBitmap;
-      file.close();
       if (!wasAtCapacity) self->overflowCount_--;
       return nullptr;
     }
   }
-
-  file.close();
 
   // All reads succeeded — commit to slot (evict old entry if at capacity)
   if (wasAtCapacity) {
