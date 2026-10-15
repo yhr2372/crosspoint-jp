@@ -174,6 +174,11 @@ BmpReaderError Bitmap::parseHeaders() {
     }
   }
 
+  fastIndexMap = bpp == 2 && nativePalette && !atkinsonDitherer && !fsDitherer;
+  if (fastIndexMap) {
+    for (int i = 0; i < 4; i++) indexColor[i] = static_cast<uint8_t>(adjustPixel(paletteLum[i]) >> 6);
+  }
+
   return BmpReaderError::Ok;
 }
 
@@ -183,6 +188,18 @@ BmpReaderError Bitmap::readNextRow(uint8_t* data, uint8_t* rowBuffer) const {
   if (file.read(rowBuffer, rowBytes) != rowBytes) return BmpReaderError::ShortReadRow;
 
   prevRowY += 1;
+
+  if (fastIndexMap) {
+    // 1 画素ずつ変換した場合と同じ結果を、1 バイト（4 画素）ずつ作る。幅の外の画素は 0 のまま
+    const int bytes = (width + 3) / 4;
+    for (int i = 0; i < bytes; i++) {
+      const uint8_t b = rowBuffer[i];
+      data[i] = static_cast<uint8_t>((indexColor[b >> 6] << 6) | (indexColor[(b >> 4) & 3] << 4) |
+                                     (indexColor[(b >> 2) & 3] << 2) | indexColor[b & 3]);
+    }
+    if (const int rem = width & 3) data[bytes - 1] &= static_cast<uint8_t>(0xFF << (8 - 2 * rem));
+    return BmpReaderError::Ok;
+  }
 
   uint8_t* outPtr = data;
   uint8_t currentOutByte = 0;

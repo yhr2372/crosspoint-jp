@@ -1231,6 +1231,54 @@ void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       continue;
     }
 
+    if (!isScaled && cropPixX == 0) {
+      // 拡大縮小も切り抜きもないときは、drawPixel() を画素ごとに呼ばずにフレームバッファへ直接書く
+      // （向きの変換は行の頭で 1 回だけ。描く画素と色の決め方は下の通常の経路と同じ）
+      const int xStart = std::max(0, -x);
+      const int xEnd = std::min(bitmap.getWidth(), getScreenWidth() - x);
+      if (xStart >= xEnd) continue;
+      int phyX = 0;
+      int phyY = 0;
+      rotateCoordinates(orientation, x + xStart, screenY, &phyX, &phyY, panelWidth, panelHeight);
+      int stepX = 0;
+      int stepY = 0;
+      switch (orientation) {
+        case Portrait:
+          stepY = -1;
+          break;
+        case LandscapeClockwise:
+          stepX = -1;
+          break;
+        case PortraitInverted:
+          stepY = 1;
+          break;
+        case LandscapeCounterClockwise:
+          stepX = 1;
+          break;
+      }
+      for (int bmpX = xStart; bmpX < xEnd; bmpX++, phyX += stepX, phyY += stepY) {
+        const uint8_t val = outputRow[bmpX / 4] >> (6 - ((bmpX * 2) % 8)) & 0x3;
+        bool draw;
+        if (renderMode == BW) {
+          draw = val < 3;
+        } else if (renderMode == GRAYSCALE_MSB) {
+          draw = val == 1 || val == 2;
+        } else {
+          draw = val == 1;
+        }
+        if (!draw) continue;
+        uint8_t& cell = frameBuffer[static_cast<uint32_t>(phyY) * panelWidthBytes + (phyX >> 3)];
+        const uint8_t mask = static_cast<uint8_t>(0x80 >> (phyX & 7));
+        // BW は黒（ビットを下ろす）、灰色の 2 パスは印（ビットを立てる）。画像なのでダークモードの反転はしない
+        if (renderMode == BW) {
+          cell &= static_cast<uint8_t>(~mask);
+        } else {
+          cell |= mask;
+        }
+      }
+      continue;
+    }
+
     for (int bmpX = cropPixX; bmpX < bitmap.getWidth() - cropPixX; bmpX++) {
       int screenX = bmpX - cropPixX;
       if (isScaled) {

@@ -92,6 +92,10 @@ class Bitmap {
   bool nativePalette = false;  // true if all palette entries map to native gray levels
   int rowBytes = 0;
   uint8_t paletteLum[256] = {};
+  // 2bpp で灰色の段階がそのまま出せる（ディザしない）ときの、パレット番号→出力の 2bit。
+  // readNextRow() が 1 画素ずつ変換せず、1 バイト（4 画素）ずつ置き換えられる
+  bool fastIndexMap = false;
+  uint8_t indexColor[4] = {};
 
   // Dithering state (mutable for const methods)
   mutable int16_t* errorCurRow = nullptr;
