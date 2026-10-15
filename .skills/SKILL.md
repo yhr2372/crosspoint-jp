@@ -1033,6 +1033,27 @@ git merge upstream/<新バージョンタグ>
 - ExternalFontのLRUハッシュテーブルはトゥームストーン方式で修正済みだが、`_accessCounter`のuint32_tオーバーフローは未対応
 - `ParsedText`の行分割がDP最適からgreedy方式に変更済み（Latin justification品質が若干低下）
 - シリアルモニタがデバイス動作中に切断されることがある（ESP32-C3 USB Serial/JTAG の制約）
+## push 前に必ず通すこと（AI エージェント向け）
+
+`master` への push はそのまま Dev Build（配布用 firmware.bin）になる。CI（`.github/workflows/ci.yml`）で
+落ちるものを持ち込まないよう、push 前に次をすべて通す。**手元で通せないものを「たぶん大丈夫」で飛ばさない。**
+
+1. **書式**: clang-format **21**（`.clang-format` は 21 未満だと読めない）で `bin/clang-format-fix` を実行し、差分が出ないこと。
+   古い clang-format しかなければ `pip install clang-format==21.1.8` で入れる
+2. **静的解析**: CI は `pio check --fail-on-defect low` で、`src/` の low 以上が 1 件でも出れば落ちる。
+   `pio check` が ESP-IDF の部品を取れない環境では、同梱の cppcheck を CI と同じ指定で直接かける:
+   ```bash
+   ~/.platformio/packages/tool-cppcheck/cppcheck --enable=all --suppress=missingInclude \
+     --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=unmatchedSuppression \
+     --inline-suppr --std=c++20 --language=c++ --quiet <変更したファイル>
+   ```
+   自分が足した行に style 以上の指摘が出ないこと（既存コードの指摘は対象外）
+3. **ビルドと動作**: `pio run -e simulator` が通り、シミュレータで変更した操作を実際に動かして確認する。
+   Linux でシミュレータを通すために `-Wno-narrowing` を足した場合、その指摘は ESP32 のビルドではエラーになる。
+   生成した表（フォントの `.h` など）は `g++ -fsyntax-only -Wnarrowing -Werror` で別に確かめる
+4. **push 後**: Dev Build と CI (build) の両方が成功したことを確認してから firmware.bin を渡す。
+   CI が赤なら、渡す前に直す
+
 ## ホストシミュレータ（本家 crosspoint-simulator のフォーク）
 
 実機に書き込まずに、ファームウェア全体（Home・ファイル一覧・設定・リーダー・WebServer）を

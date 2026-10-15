@@ -54,7 +54,7 @@ void Section::expandLoneImage(Page& page) const {
   const auto& image = static_cast<PageImage&>(*page.elements[0]).getImageBlock();
 
   ImageDimensions dims = {0, 0};
-  ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(image.getImagePath());
+  const ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(image.getImagePath());
   if (!decoder || !decoder->getDimensions(image.getImagePath(), dims) || dims.width <= 0 || dims.height <= 0) return;
 
   // 拡大はしない（デコーダは縮小前提。元より大きくすると画質も上がらない）
