@@ -51,7 +51,7 @@ bool readMeta(const std::string& imagePath, int& count, int& width) {
 // ページ画像を横 targetWidth（元の幅を超えない）の 2bit BMP に展開する
 bool decodeZoom(const std::string& imagePath, int targetWidth) {
   ImageDimensions dims = {0, 0};
-  ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(imagePath);
+  const ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(imagePath);
   if (!decoder || !decoder->getDimensions(imagePath, dims) || dims.width <= 0 || dims.height <= 0) {
     LOG_ERR("TIER", "No dimensions: %s", imagePath.c_str());
     return false;
@@ -68,9 +68,8 @@ bool decodeZoom(const std::string& imagePath, int targetWidth) {
     in.close();
     return false;
   }
-  const bool ok = FsHelpers::hasJpgExtension(imagePath)
-                      ? JpegToBmpConverter::jpegFileToBmpStreamWithSize(in, out, w, h)
-                      : PngToBmpConverter::pngFileToBmpStreamWithSize(in, out, w, h);
+  const bool ok = FsHelpers::hasJpgExtension(imagePath) ? JpegToBmpConverter::jpegFileToBmpStreamWithSize(in, out, w, h)
+                                                        : PngToBmpConverter::pngFileToBmpStreamWithSize(in, out, w, h);
   in.close();
   out.close();
   if (!ok) {
@@ -289,11 +288,11 @@ int prepare(const std::string& imagePath, const int targetWidth) {
 
   std::vector<Band> tiers;
   bool ok = true;
-  bool illustration = false;
   if (bmpHeight * 10 < bmpWidth * 12) {
     // 縦長でない絵（見開き・横長の一枚絵）は分けず、1 枚まるごとを横向きで出す
     tiers.push_back({0, bmpHeight});
   } else {
+    bool illustration = false;  // 一枚絵なら tiers は空のまま（段数 0 として覚える）
     ok = findTiers(bmp, bmpWidth, bmpHeight, rowBytes, tiers, illustration);
   }
   for (size_t i = 0; ok && i < tiers.size(); i++) {

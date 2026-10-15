@@ -20,10 +20,10 @@ class FabLifeActivity final : public Activity {
   static constexpr unsigned long kRepeatMs = 500;     // その後 ±5 を足す間隔
   static constexpr int kLongStep = 5;
   static constexpr unsigned long kMenuHoldMs = 700;  // 側面 Up 長押しでメニュー
-  static constexpr int kSettleMs = 4000;     // この間隔内の連続操作は履歴 1 件にまとめる
+  static constexpr int kSettleMs = 4000;             // この間隔内の連続操作は履歴 1 件にまとめる
   static constexpr size_t kMaxHistory = 60;
   static constexpr int kMenuItems = 4;
-  static constexpr int kPastGames = 5;            // 履歴に並べる直近の試合数
+  static constexpr int kPastGames = 5;           // 履歴に並べる直近の試合数
   static constexpr size_t kLogTailBytes = 4096;  // 起動時に読むログ末尾の大きさ
 
   State state = State::PLAY;
@@ -31,8 +31,8 @@ class FabLifeActivity final : public Activity {
   int startLife = 20;      // 20 or 40
   int menuIndex = 0;
   int gameNumber = 1;
-  int heldKey = -1;    // 押し続けている前面ボタン（kFrontKeys の添字）
-  int heldSteps = 0;   // その長押しで足した ±5 の回数
+  int heldKey = -1;      // 押し続けている前面ボタン（kFrontKeys の添字）
+  int heldSteps = 0;     // その長押しで足した ±5 の回数
   bool upArmed = false;  // 側面 Up を押し始めた（メニューか履歴かは離すか 0.7 秒で決まる）
   bool firstRender = true;
   bool exitArmed = false;  // 終了ボタンを押した（離したら終了）

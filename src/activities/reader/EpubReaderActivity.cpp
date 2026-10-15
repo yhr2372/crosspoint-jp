@@ -1016,9 +1016,9 @@ bool EpubReaderActivity::loadOrBuildSection(Section& target, const uint16_t view
                                             const uint16_t viewportHeight) {
   const auto& silentDs = SETTINGS.getDirectionSettings(verticalMode);
   if (target.loadSectionFile(SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
-                             silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth,
-                             viewportHeight, silentDs.hyphenationEnabled, silentDs.firstLineIndent,
-                             SETTINGS.embeddedStyle, SETTINGS.imageRendering, verticalMode, silentDs.charSpacing)) {
+                             silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth, viewportHeight,
+                             silentDs.hyphenationEnabled, silentDs.firstLineIndent, SETTINGS.embeddedStyle,
+                             SETTINGS.imageRendering, verticalMode, silentDs.charSpacing)) {
     return true;
   }
 
@@ -1026,11 +1026,11 @@ bool EpubReaderActivity::loadOrBuildSection(Section& target, const uint16_t view
   const int silentHeadingFontIds[6] = {
       SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
   target.setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
-  if (!target.createSectionFile(
-          SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
-          silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth, viewportHeight,
-          silentDs.hyphenationEnabled, silentDs.firstLineIndent, SETTINGS.embeddedStyle, SETTINGS.imageRendering,
-          verticalMode, silentDs.charSpacing, nullptr, silentHeadingFontIds, SETTINGS.getTableFontId(verticalMode))) {
+  if (!target.createSectionFile(SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
+                                silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth,
+                                viewportHeight, silentDs.hyphenationEnabled, silentDs.firstLineIndent,
+                                SETTINGS.embeddedStyle, SETTINGS.imageRendering, verticalMode, silentDs.charSpacing,
+                                nullptr, silentHeadingFontIds, SETTINGS.getTableFontId(verticalMode))) {
     LOG_ERR("ERS", "Failed silent indexing for chapter: %d", target.getSpineIndex());
     return false;
   }
@@ -1116,8 +1116,8 @@ void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
     const int areaW = renderer.getScreenWidth() - left - right;
     const int areaH = renderer.getScreenHeight() - top - bottom;
     // drawBitmap は縮小だけするので、描かれる大きさを同じ式で求めて中央に置く
-    const float scale = std::min(1.0f, std::min(static_cast<float>(areaW) / bmp.getWidth(),
-                                                static_cast<float>(areaH) / bmp.getHeight()));
+    const float scale = std::min(
+        1.0f, std::min(static_cast<float>(areaW) / bmp.getWidth(), static_cast<float>(areaH) / bmp.getHeight()));
     const int w = static_cast<int>(bmp.getWidth() * scale);
     const int h = static_cast<int>(bmp.getHeight() * scale);
     renderer.drawBitmap(bmp, left + (areaW - w) / 2, top + (areaH - h) / 2, areaW, areaH);

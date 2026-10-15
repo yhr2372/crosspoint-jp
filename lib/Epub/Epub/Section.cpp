@@ -1,10 +1,11 @@
 #include "Section.h"
 
 #include <Arduino.h>
-#include <algorithm>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Serialization.h>
+
+#include <algorithm>
 
 #include "Epub/css/CssParser.h"
 #include "Epub/css/CssSelectorUsage.h"
