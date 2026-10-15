@@ -220,6 +220,14 @@ def inject_version(env):
             get_version_from_git_tag(project_dir, exact=True)
             or get_base_version(project_dir)
         )
+        # No v* tag reachable (e.g. a fork, whose tags GitHub does not copy):
+        # every build would read just "0.0.0". Add the commit, in git
+        # describe's own "-g<sha>" form, so builds stay distinguishable on the
+        # device; ReleaseVersion still parses it as an off-tag 0.0.0.
+        if get_version_from_git_tag(project_dir) is None and not os.environ.get('OTA_TEST_VERSION'):
+            short_sha = get_git_short_sha(project_dir)
+            if short_sha:
+                version_string = f'{version_string}-g{short_sha}'
 
     env.Append(CPPDEFINES=[('CROSSPOINT_VERSION', f'\\"{version_string}\\"')])
     print(f'CrossPoint build version: {version_string}')
