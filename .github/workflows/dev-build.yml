@@ -9,6 +9,8 @@ on:
       - '.github/workflows/**'
       - 'lib/EpdFont/scripts/**'
       - 'scripts/generate-font-manifest.py'
+  # 手動実行。push で走らなかった（フォークでワークフローが止められていた等）ときに作り直す
+  workflow_dispatch:
 
 concurrency:
   group: dev-build
