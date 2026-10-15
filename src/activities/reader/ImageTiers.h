@@ -13,6 +13,9 @@ namespace image_tiers {
 
 constexpr int MAX_TIERS = 6;
 
+// 段を作った回数（デバッグ表示用。用意済みなら増えない）
+extern int buildCount;
+
 // 段の BMP を用意して段数を返す（失敗なら 0）。用意済みならすぐ返る
 int prepare(const std::string& imagePath, int targetWidth);
 

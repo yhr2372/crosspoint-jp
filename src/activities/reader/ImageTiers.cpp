@@ -263,12 +263,15 @@ bool isPrepared(const std::string& imagePath, const int targetWidth) {
   return readMeta(imagePath, count, width) && width == targetWidth;
 }
 
+int buildCount = 0;
+
 int prepare(const std::string& imagePath, const int targetWidth) {
   int count = 0;
   int width = 0;
   if (readMeta(imagePath, count, width) && width == targetWidth) return count;
 
   const unsigned long start = millis();
+  buildCount++;
   if (!decodeZoom(imagePath, targetWidth)) return 0;
 
   HalFile bmp;

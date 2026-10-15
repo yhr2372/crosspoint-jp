@@ -3,6 +3,7 @@
 #include <Bitmap.h>
 #include <Epub/InlineImage.h>
 #include <Epub/Page.h>
+#include <Epub/blocks/ImageBlock.h>
 #include <Epub/blocks/TextBlock.h>
 #include <FontCacheManager.h>
 #include <FontManager.h>
@@ -913,6 +914,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       LOG_DBG("ERS", "Cache found, skipping build...");
     }
     debugSectionMs = millis() - sectionStart;
+    snprintf(debugSectionNote, sizeof(debugSectionNote), "%s", section->loadNote);
 
     if (nextPageNumber == UINT16_MAX) {
       section->currentPage = section->pageCount - 1;
@@ -1023,14 +1025,50 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
 // 設定の「デバッグ表示」がオンのときだけ、このページの準備にかかった時間を左上に出す。
 // 章=章の読み込み／作成、描画=画像の展開と画面への描き込み、先読み=前のページで次（このページ）を用意した時間
+// 2 行目: 章キャッシュの結果（hit=使えた / kept=設定違いだが画像だけなので使った / none=無かった /
+// miss=設定違いで作り直した。後ろは「保存値/今の値」）、JPEG から画像を作った回数、段を作った回数。
+// 同じ内容を /.crosspoint/read_perf.log にも追記する（カードを PC で開いて回収できる）
 void EpubReaderActivity::drawDebugTimings() {
-  char buf[64];
-  snprintf(buf, sizeof(buf), "sec %lu  draw %lu  pre %lu ms", debugSectionMs, debugDrawMs, debugPrefetchMs);
-  renderer.fillRect(0, 0, renderer.getScreenWidth(), 28, false);
-  renderer.drawText(UI_10_FONT_ID, 6, 4, buf, true);
+  const int decoded = ImageBlock::decodeCount - debugDecodeBase;
+  const int tiersBuilt = image_tiers::buildCount - debugTierBase;
+  debugDecodeBase = ImageBlock::decodeCount;
+  debugTierBase = image_tiers::buildCount;
+
+  char line1[64];
+  snprintf(line1, sizeof(line1), "sec %lu  draw %lu  pre %lu ms", debugSectionMs, debugDrawMs, debugPrefetchMs);
+  char line2[128];
+  snprintf(line2, sizeof(line2), "sec:%s dec:%d tier:%d", debugSectionNote[0] ? debugSectionNote : "-", decoded,
+           tiersBuilt);
+  renderer.fillRect(0, 0, renderer.getScreenWidth(), 52, false);
+  renderer.drawText(UI_10_FONT_ID, 6, 4, line1, true);
+  renderer.drawText(UI_10_FONT_ID, 6, 28, line2, true);
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+
+  char logLine[320];
+  const int len =
+      snprintf(logLine, sizeof(logLine), "spine=%d page=%d tier=%d %s | %s | pre:%s | %s\n", currentSpineIndex,
+               section ? section->currentPage : -1, tierMode ? tierIndex : -1, line1, line2,
+               debugPrefetchNote[0] ? debugPrefetchNote : "-", debugRenderNote[0] ? debugRenderNote : "-");
+  if (len > 0) {
+    auto file = Storage.open("/.crosspoint/read_perf.log", O_WRONLY | O_CREAT | O_APPEND);
+    if (file) {
+      if (file.size() > 64 * 1024) {
+        file.close();
+        Storage.remove("/.crosspoint/read_perf.log");
+        file = Storage.open("/.crosspoint/read_perf.log", O_WRONLY | O_CREAT | O_APPEND);
+      }
+      if (file) {
+        file.write(logLine, std::min(static_cast<size_t>(len), sizeof(logLine) - 1));
+        file.close();
+      }
+    }
+  }
+
   debugSectionMs = 0;
   debugPrefetchMs = 0;
+  debugSectionNote[0] = '\0';
+  debugPrefetchNote[0] = '\0';
+  debugRenderNote[0] = '\0';
 }
 
 void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportWidth, const uint16_t viewportHeight) {
@@ -1099,7 +1137,9 @@ void EpubReaderActivity::prefetchNextPage(const uint16_t viewportWidth, const ui
     section->currentPage = saved;
   } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
     Section nextSection(epub, currentSpineIndex + 1, renderer);
-    if (!loadOrBuildSection(nextSection, viewportWidth, viewportHeight) || nextSection.pageCount == 0) return;
+    const bool loaded = loadOrBuildSection(nextSection, viewportWidth, viewportHeight);
+    snprintf(debugPrefetchNote, sizeof(debugPrefetchNote), "%s", nextSection.loadNote);
+    if (!loaded || nextSection.pageCount == 0) return;
     nextSection.currentPage = 0;
     next = nextSection.loadPageFromSectionFile();
   }
@@ -1328,6 +1368,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
             "gray_lsb=%lums gray_msb=%lums gray_display=%lums bw_restore=%lums total=%lums",
             tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tBwStore - tDisplay, tGrayLsb - tBwStore,
             tGrayMsb - tGrayLsb, tGrayDisplay - tGrayMsb, tBwRestore - tGrayDisplay, tEnd - t0);
+    snprintf(debugRenderNote, sizeof(debugRenderNote), "bw%lu disp%lu lsb%lu msb%lu gdisp%lu", tBwRender - tPrewarm,
+             tDisplay - tBwRender, tGrayLsb - tBwStore, tGrayMsb - tGrayLsb, tGrayDisplay - tGrayMsb);
   } else {
     // restore the bw data
     renderer.restoreBwBuffer();
@@ -1338,6 +1380,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
             "Page render: prewarm=%lums bw_render=%lums display=%lums bw_store=%lums bw_restore=%lums total=%lums",
             tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tBwStore - tDisplay, tBwRestore - tBwStore,
             tEnd - t0);
+    snprintf(debugRenderNote, sizeof(debugRenderNote), "bw%lu disp%lu", tBwRender - tPrewarm, tDisplay - tBwRender);
   }
 }
 

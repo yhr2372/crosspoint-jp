@@ -23,6 +23,8 @@ class ImageBlock final : public Block {
   void render(GfxRenderer& renderer, const int x, const int y);
   // JPEG の表示用キャッシュ（BMP）だけを作る。JPEG 以外や失敗なら false
   bool ensureJpegBmpCache() const;
+  // JPEG から表示用 BMP を作った回数（デバッグ表示用。キャッシュが効いていれば増えない）
+  static uint16_t decodeCount;
   bool serialize(FsFile& file);
   static std::unique_ptr<ImageBlock> deserialize(FsFile& file);
 

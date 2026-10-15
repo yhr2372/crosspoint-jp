@@ -36,6 +36,8 @@ class Section {
  public:
   uint16_t pageCount = 0;
   int currentPage = 0;
+  // デバッグ表示用: 最後の loadSectionFile() の結果（hit / kept / none / 作り直した理由）
+  char loadNote[96] = "";
   int getSpineIndex() const { return spineIndex; }
 
   explicit Section(const std::shared_ptr<Epub>& epub, const int spineIndex, GfxRenderer& renderer)

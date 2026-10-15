@@ -6,6 +6,7 @@
 #include <Serialization.h>
 
 #include <algorithm>
+#include <cstdio>
 
 #include "Epub/css/CssParser.h"
 #include "Epub/css/CssSelectorUsage.h"
@@ -133,6 +134,7 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
                               const bool embeddedStyle, const uint8_t imageRendering, const bool verticalMode,
                               const uint8_t charSpacing) {
   if (!Storage.openFileForRead("SCT", filePath, file)) {
+    snprintf(loadNote, sizeof(loadNote), "none");
     return false;
   }
 
@@ -143,6 +145,7 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
     if (version != SECTION_FILE_VERSION) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Unknown version %u", version);
+      snprintf(loadNote, sizeof(loadNote), "ver %u", version);
       clearCache();
       return false;
     }
@@ -177,6 +180,27 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
         hyphenationEnabled != fileHyphenationEnabled || firstLineIndent != fileFirstLineIndent ||
         embeddedStyle != fileEmbeddedStyle || imageRendering != fileImageRendering ||
         verticalMode != fileVerticalMode || charSpacing != fileCharSpacing) {
+      // デバッグ表示用に、違っていた項目だけを「保存値/今の値」で残す
+      int n = 0;
+      const auto note = [&](const char* fmt, auto a, auto b) {
+        if (n < static_cast<int>(sizeof(loadNote)) - 1) {
+          n += snprintf(loadNote + n, sizeof(loadNote) - n, fmt, a, b);
+        }
+      };
+      loadNote[0] = '\0';
+      if (fontId != fileFontId) note(" f%d/%d", fileFontId, fontId);
+      if (lineCompression != fileLineCompression) note(" lc%.2f/%.2f", fileLineCompression, lineCompression);
+      if (extraParagraphSpacing != fileExtraParagraphSpacing)
+        note(" ps%d/%d", fileExtraParagraphSpacing, extraParagraphSpacing);
+      if (paragraphAlignment != fileParagraphAlignment) note(" al%d/%d", fileParagraphAlignment, paragraphAlignment);
+      if (viewportWidth != fileViewportWidth) note(" w%d/%d", fileViewportWidth, viewportWidth);
+      if (viewportHeight != fileViewportHeight) note(" h%d/%d", fileViewportHeight, viewportHeight);
+      if (hyphenationEnabled != fileHyphenationEnabled) note(" hy%d/%d", fileHyphenationEnabled, hyphenationEnabled);
+      if (firstLineIndent != fileFirstLineIndent) note(" in%d/%d", fileFirstLineIndent, firstLineIndent);
+      if (embeddedStyle != fileEmbeddedStyle) note(" es%d/%d", fileEmbeddedStyle, embeddedStyle);
+      if (imageRendering != fileImageRendering) note(" ir%d/%d", fileImageRendering, imageRendering);
+      if (verticalMode != fileVerticalMode) note(" vm%d/%d", fileVerticalMode, verticalMode);
+      if (charSpacing != fileCharSpacing) note(" cs%d/%d", fileCharSpacing, charSpacing);
       // 画像 1 枚だけの章（漫画のページ）は文字の設定に左右されないので、書字方向と画面の縦横が
       // 同じなら作り直さずに使う。余白などで変わる位置は loadPageFromSectionFile() で枠に収め直す
       const bool sameShape = verticalMode == fileVerticalMode &&
@@ -186,14 +210,18 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
         file.close();
         if (pageCount == 1 && isLoneImageSection()) {
           refitLoneImage = true;
-          LOG_DBG("SCT", "Settings changed, keeping image-only section");
+          LOG_DBG("SCT", "Settings changed, keeping image-only section:%s", loadNote);
+          const std::string diff = loadNote;
+          snprintf(loadNote, sizeof(loadNote), "kept%s", diff.c_str());
           return true;
         }
         pageCount = 0;
       } else {
         file.close();
       }
-      LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
+      LOG_ERR("SCT", "Deserialization failed: Parameters do not match:%s", loadNote);
+      const std::string diff = loadNote;
+      snprintf(loadNote, sizeof(loadNote), "miss%s", diff.c_str());
       clearCache();
       return false;
     }
@@ -201,6 +229,7 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
 
   serialization::readPod(file, pageCount);
   file.close();
+  snprintf(loadNote, sizeof(loadNote), "hit");
   LOG_DBG("SCT", "Deserialization succeeded: %d pages", pageCount);
   return true;
 }

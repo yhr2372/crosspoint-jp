@@ -15,6 +15,8 @@
 // - uint16_t height
 // - uint8_t pixels[...] - 2 bits per pixel, packed (4 pixels per byte), row-major order
 
+uint16_t ImageBlock::decodeCount = 0;
+
 ImageBlock::ImageBlock(const std::string& imagePath, int16_t width, int16_t height)
     : imagePath(imagePath), width(width), height(height) {}
 
@@ -238,6 +240,7 @@ bool ImageBlock::ensureJpegBmpCache() const {
     return false;
   }
   LOG_DBG("IMG", "Cached JPEG as BMP: %s", bmpPath.c_str());
+  decodeCount++;
   return true;
 }
 

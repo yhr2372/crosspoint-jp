@@ -52,6 +52,11 @@ class EpubReaderActivity final : public Activity {
   unsigned long debugSectionMs = 0;
   unsigned long debugDrawMs = 0;
   unsigned long debugPrefetchMs = 0;
+  char debugSectionNote[96] = "";
+  char debugPrefetchNote[96] = "";
+  char debugRenderNote[64] = "";  // 縦の描画の内訳（ms）: 描き込み・画面更新・灰色 2 パス・灰色の画面更新
+  int debugDecodeBase = 0;
+  int debugTierBase = 0;
   // 画像だけのページを広げる枠（ページ座標）。余白を除いた本体の見える範囲
   int16_t fullBleedX = 0;
   int16_t fullBleedY = 0;
