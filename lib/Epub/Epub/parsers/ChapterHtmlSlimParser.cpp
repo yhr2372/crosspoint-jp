@@ -482,21 +482,35 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
             // Extract image to cache file
             FsFile cachedImageFile;
             bool extractSuccess = false;
-            // 前回のレイアウトで作った変換済みキャッシュ（.bmp / .pxc / 段表示の .tiers）は捨てる。
-            // .bmp は存在だけで使われるため、残すと古い大きさのまま描かれる
+            // 前回のレイアウトで作った表示用キャッシュ（.pxc / .pxc.bmp）は捨てる。大きさがレイアウトで
+            // 決まるうえ、.bmp は存在だけで使われるため、残すと古い大きさのまま描かれる
+            const size_t dot = cachedImagePath.rfind('.');
+            const std::string stem = dot != std::string::npos ? cachedImagePath.substr(0, dot) : cachedImagePath;
+            for (const char* suffix : {".pxc", ".pxc.bmp"}) {
+              const std::string stale = stem + suffix;
+              if (Storage.exists(stale.c_str())) Storage.remove(stale.c_str());
+            }
+            // 段表示の .tiers は画像と画面の向きだけで決まるので、取り出し直した画像が前と違うときだけ捨てる
+            // （PC などで先に作って置いた段も、レイアウトの作り直しで消さずに使える）
+            int64_t previousImageSize = -1;
             {
-              const size_t dot = cachedImagePath.rfind('.');
-              const std::string stem = dot != std::string::npos ? cachedImagePath.substr(0, dot) : cachedImagePath;
-              for (const char* ext : {".pxc", ".pxc.bmp", ".tiers"}) {
-                const std::string stale = stem + ext;
-                if (Storage.exists(stale.c_str())) Storage.remove(stale.c_str());
+              FsFile previous;
+              if (Storage.exists(cachedImagePath.c_str()) &&
+                  Storage.openFileForRead("EHP", cachedImagePath, previous)) {
+                previousImageSize = static_cast<int64_t>(previous.size());
+                previous.close();
               }
             }
             if (Storage.openFileForWrite("EHP", cachedImagePath, cachedImageFile)) {
               extractSuccess = self->epub->readItemContentsToStream(resolvedPath, cachedImageFile, 4096);
               cachedImageFile.flush();
+              const int64_t newImageSize = static_cast<int64_t>(cachedImageFile.size());
               cachedImageFile.close();
               delay(50);  // Give SD card time to sync
+              const std::string tiersMeta = stem + ".tiers";
+              if (previousImageSize >= 0 && previousImageSize != newImageSize && Storage.exists(tiersMeta.c_str())) {
+                Storage.remove(tiersMeta.c_str());
+              }
             }
 
             if (extractSuccess) {
