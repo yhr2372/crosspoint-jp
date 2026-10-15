@@ -37,10 +37,10 @@ void writeLE32(uint8_t* p, const uint32_t v) { memcpy(p, &v, sizeof(v)); }
 
 // 段数と、作ったときの幅（画面の向き・機種が変わったら作り直す）
 bool readMeta(const std::string& imagePath, int& count, int& width) {
-  HalFile f;
-  if (!Storage.exists(metaPath(imagePath).c_str()) || !Storage.openFileForRead("TIER", metaPath(imagePath), f)) {
-    return false;
-  }
+  // exists() + openFileForRead() だと同じファイルを 3 回探す。キャッシュのフォルダはファイルが多く、
+  // 1 回探すだけで数百 ms かかることがあるので、開いてみるだけにする
+  HalFile f = Storage.open(metaPath(imagePath).c_str());
+  if (!f.isOpen()) return false;
   char buf[32] = {};
   f.read(buf, sizeof(buf) - 1);
   f.close();
@@ -257,10 +257,10 @@ std::string tierPath(const std::string& imagePath, const int index) {
   return stemOf(imagePath) + ".t" + std::to_string(index) + ".bmp";
 }
 
-bool isPrepared(const std::string& imagePath, const int targetWidth) {
+int preparedCount(const std::string& imagePath, const int targetWidth) {
   int count = 0;
   int width = 0;
-  return readMeta(imagePath, count, width) && width == targetWidth;
+  return readMeta(imagePath, count, width) && width == targetWidth ? count : -1;
 }
 
 int buildCount = 0;

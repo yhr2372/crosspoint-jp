@@ -78,7 +78,7 @@ class EpubReaderActivity final : public Activity {
   int tierAreaWidth() const;
   void prefetchNextPage(uint16_t viewportWidth, uint16_t viewportHeight);
   bool loadOrBuildSection(Section& target, uint16_t viewportWidth, uint16_t viewportHeight);
-  void drawTierBitmap(const std::string& path) const;
+  void drawTierBitmap(HalFile& file) const;
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
   void renderStatusBar() const;

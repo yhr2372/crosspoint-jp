@@ -25,6 +25,8 @@ class ImageBlock final : public Block {
   bool ensureJpegBmpCache() const;
   // JPEG から表示用 BMP を作った回数（デバッグ表示用。キャッシュが効いていれば増えない）
   static uint16_t decodeCount;
+  // 開いたまま使い回している表示用 BMP を閉じる。その BMP を消す・書き直す前と、本を閉じるときに呼ぶ
+  static void releaseCachedFile();
   bool serialize(FsFile& file);
   static std::unique_ptr<ImageBlock> deserialize(FsFile& file);
 

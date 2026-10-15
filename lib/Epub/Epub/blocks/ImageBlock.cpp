@@ -1,6 +1,7 @@
 #include "ImageBlock.h"
 
 #include <Bitmap.h>
+#include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <JpegToBmpConverter.h>
@@ -23,6 +24,11 @@ ImageBlock::ImageBlock(const std::string& imagePath, int16_t width, int16_t heig
 bool ImageBlock::imageExists() const { return Storage.exists(imagePath.c_str()); }
 
 namespace {
+
+// 最後に描いた JPEG の表示用 BMP。1 ページを白黒と灰色 2 回で描くので開いたまま使い回す
+// （キャッシュのフォルダはファイルが多く、開くたびに探すと 1 回数百 ms かかる）。描画タスクからだけ使う
+HalFile gDisplayBmp;
+std::string gDisplayBmpPath;
 
 std::string getCachePath(const std::string& imagePath) {
   // Replace extension with .pxc (pixel cache)
@@ -122,6 +128,10 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
     return;
   }
 
+  // 文字の下調べ（フォントの先読み）の回は画像が描かれないので、ファイルにも触らない
+  const auto* fcm = renderer.getFontCacheManager();
+  if (fcm && fcm->isScanning()) return;
+
   // When "Invert Images" is OFF (default), skip dark mode inversion for images
   // and pre-fill with white so non-drawn pixels are visible on dark background.
   // When ON, let dark mode invert image pixels normally (no guard, no pre-fill).
@@ -131,8 +141,35 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
     renderer.fillRect(x, y, width, height, false);
   }
 
-  // Try to render from cache first
   std::string cachePath = getCachePath(imagePath);
+
+  // JPEG は表示用 BMP（.pxc.bmp）を描く。.pxc は JPEG では作らないので探さない
+  if (FsHelpers::hasJpgExtension(imagePath)) {
+    const std::string bmpPath = cachePath + ".bmp";
+    if (gDisplayBmpPath != bmpPath || !gDisplayBmp.isOpen()) {
+      releaseCachedFile();
+      gDisplayBmp = Storage.open(bmpPath.c_str());
+      if (!gDisplayBmp.isOpen()) {
+        // まだ無ければ JPEG から作る
+        if (!ensureJpegBmpCache()) return;
+        gDisplayBmp = Storage.open(bmpPath.c_str());
+        if (!gDisplayBmp.isOpen()) return;
+      }
+      gDisplayBmpPath = bmpPath;
+    }
+    gDisplayBmp.seek(0);
+    Bitmap bmp(gDisplayBmp);
+    if (bmp.parseHeaders() == BmpReaderError::Ok) {
+      renderer.drawBitmap(bmp, x, y, width, height);
+    } else {
+      LOG_ERR("IMG", "Failed to parse cached BMP");
+      releaseCachedFile();
+      Storage.remove(bmpPath.c_str());
+    }
+    return;
+  }
+
+  // Try to render from cache first
   if (renderFromCache(renderer, cachePath, x, y, width, height)) {
     return;
   }
@@ -169,29 +206,6 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
   // which correctly handles large images and scaling. The JPEGDEC-based
   // JpegToFramebufferConverter has diagonal distortion bugs with scaled output.
   // The converted BMP is cached on SD card for fast subsequent renders.
-  if (FsHelpers::hasJpgExtension(imagePath)) {
-    const std::string bmpPath = cachePath + ".bmp";
-
-    // Convert JPEG to BMP if not cached yet
-    if (!ensureJpegBmpCache()) {
-      return;
-    }
-
-    // Render from cached BMP
-    FsFile bmpReadFile;
-    if (Storage.openFileForRead("IMG", bmpPath, bmpReadFile)) {
-      Bitmap bmp(bmpReadFile);
-      if (bmp.parseHeaders() == BmpReaderError::Ok) {
-        renderer.drawBitmap(bmp, x, y, width, height);
-      } else {
-        LOG_ERR("IMG", "Failed to parse cached BMP");
-        Storage.remove(bmpPath.c_str());
-      }
-      bmpReadFile.close();
-    }
-    return;
-  }
-
   // For non-JPEG images (PNG), use the direct framebuffer decoder
   ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(imagePath);
   if (!decoder) {
@@ -216,6 +230,7 @@ bool ImageBlock::ensureJpegBmpCache() const {
   if (!FsHelpers::hasJpgExtension(imagePath)) return false;
   const std::string bmpPath = getCachePath(imagePath) + ".bmp";
   if (Storage.exists(bmpPath.c_str())) return true;
+  releaseCachedFile();
 
   FsFile jpegFile;
   if (!Storage.openFileForRead("IMG", imagePath, jpegFile)) {
@@ -242,6 +257,11 @@ bool ImageBlock::ensureJpegBmpCache() const {
   LOG_DBG("IMG", "Cached JPEG as BMP: %s", bmpPath.c_str());
   decodeCount++;
   return true;
+}
+
+void ImageBlock::releaseCachedFile() {
+  if (gDisplayBmp.isOpen()) gDisplayBmp.close();
+  gDisplayBmpPath.clear();
 }
 
 bool ImageBlock::serialize(FsFile& file) {

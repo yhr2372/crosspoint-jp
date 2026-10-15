@@ -116,6 +116,7 @@ void EpubReaderActivity::onEnter() {
 
 void EpubReaderActivity::onExit() {
   Activity::onExit();
+  ImageBlock::releaseCachedFile();  // 開いたまま使い回していた表示用 BMP
 
   // 次のアクティビティの向き（renderer と入力の両方）は ActivityManager が
   // Pop / Replace 時に OrientationHelper で適用するので、ここでは戻さない。
@@ -1184,10 +1185,10 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
     LOG_ERR("ERS", "Could not save progress!");
   }
 }
-// 段の BMP を横向き（本体を左に倒した向き＝LandscapeCounterClockwise）で、見える範囲いっぱいに中央寄せで描く
-void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
-  HalFile file;
-  if (!Storage.openFileForRead("ERS", path, file)) return;
+// 段の BMP を横向き（本体を左に倒した向き＝LandscapeCounterClockwise）で、見える範囲いっぱいに中央寄せで描く。
+// 白黒と灰色 2 回の計 3 回描くので、ファイルは呼び出し側で 1 回だけ開いて渡す
+void EpubReaderActivity::drawTierBitmap(HalFile& file) const {
+  file.seek(0);
   Bitmap bmp(file);
   if (bmp.parseHeaders() == BmpReaderError::Ok) {
     const auto saved = renderer.getOrientation();
@@ -1204,7 +1205,6 @@ void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
     renderer.drawBitmap(bmp, left + (areaW - w) / 2, top + (areaH - h) / 2, areaW, areaH);
     renderer.setOrientation(saved);
   }
-  file.close();
 }
 
 // 画像だけのページを段に分け、今の段を横向きで表示する。段に分けられなければ false（普通に描く）
@@ -1222,10 +1222,11 @@ int EpubReaderActivity::tierAreaWidth() const {
 bool EpubReaderActivity::renderTier(const std::string& imagePath) {
   const int areaW = tierAreaWidth();
 
-  if (!image_tiers::isPrepared(imagePath, areaW)) {
+  tierCount = image_tiers::preparedCount(imagePath, areaW);
+  if (tierCount < 0) {
     GUI.drawPopup(renderer, tr(STR_INDEXING));  // 初めてのページは展開に数秒かかる
+    tierCount = image_tiers::prepare(imagePath, areaW);
   }
-  tierCount = image_tiers::prepare(imagePath, areaW);
   if (tierCount <= 0) {
     tierCount = 0;
     tierStartAtEnd = false;
@@ -1236,10 +1237,14 @@ bool EpubReaderActivity::renderTier(const std::string& imagePath) {
     tierStartAtEnd = false;
   }
   tierIndex = std::clamp(tierIndex, 0, tierCount - 1);
-  const std::string path = image_tiers::tierPath(imagePath, tierIndex);
+  HalFile file = Storage.open(image_tiers::tierPath(imagePath, tierIndex).c_str());
+  if (!file.isOpen()) {
+    tierCount = 0;
+    return false;
+  }
 
   renderer.clearScreen();
-  drawTierBitmap(path);
+  drawTierBitmap(file);
   ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
 
   // 普通の画像ページと同じく、アンチエイリアスが有効なら灰色の 2 パスを重ねる
@@ -1247,16 +1252,17 @@ bool EpubReaderActivity::renderTier(const std::string& imagePath) {
   if (SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing) {
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
-    drawTierBitmap(path);
+    drawTierBitmap(file);
     renderer.copyGrayscaleLsbBuffers();
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
-    drawTierBitmap(path);
+    drawTierBitmap(file);
     renderer.copyGrayscaleMsbBuffers();
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
   }
   renderer.restoreBwBuffer();
+  file.close();
   return true;
 }
 

@@ -486,6 +486,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
             // 決まるうえ、.bmp は存在だけで使われるため、残すと古い大きさのまま描かれる
             const size_t dot = cachedImagePath.rfind('.');
             const std::string stem = dot != std::string::npos ? cachedImagePath.substr(0, dot) : cachedImagePath;
+            ImageBlock::releaseCachedFile();
             for (const char* suffix : {".pxc", ".pxc.bmp"}) {
               const std::string stale = stem + suffix;
               if (Storage.exists(stale.c_str())) Storage.remove(stale.c_str());
@@ -500,6 +501,10 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                 previousImageSize = static_cast<int64_t>(previous.size());
                 previous.close();
               }
+            }
+            if (!self->imageDirReady) {
+              Storage.ensureDirectoryExists(self->imageBasePath.substr(0, self->imageBasePath.rfind('/')).c_str());
+              self->imageDirReady = true;
             }
             // 同じ画像がもう取り出してあれば（大きさが EPUB の中と同じなら）書き直さない
             size_t itemSize = 0;

@@ -318,7 +318,9 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
   // Derive the content base directory and image cache path prefix for the parser
   size_t lastSlash = localPath.find_last_of('/');
   std::string contentBase = (lastSlash != std::string::npos) ? localPath.substr(0, lastSlash + 1) : "";
-  std::string imageBasePath = epub->getCachePath() + "/img_" + std::to_string(spineIndex) + "_";
+  // 画像はページ（章）ごとのフォルダに置く。1 つのフォルダにまとめると、漫画では 1 冊で 1000 個を超え、
+  // SD でファイルを探すたびにフォルダ全体を読むことになる（1 回数百 ms）
+  std::string imageBasePath = epub->getCachePath() + "/img/" + std::to_string(spineIndex) + "/";
 
   CssParser* cssParser = nullptr;
   if (embeddedStyle) {

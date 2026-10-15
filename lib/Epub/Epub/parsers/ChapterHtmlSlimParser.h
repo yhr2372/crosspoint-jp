@@ -76,6 +76,7 @@ class ChapterHtmlSlimParser {
   uint8_t imageRendering;
   std::string contentBase;
   std::string imageBasePath;
+  bool imageDirReady = false;  // 画像を置くフォルダを作ったか
   int imageCounter = 0;
   bool verticalMode = false;
 

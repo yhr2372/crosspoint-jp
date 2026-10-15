@@ -19,8 +19,8 @@ extern int buildCount;
 // 段の BMP を用意して段数を返す（失敗なら 0）。用意済みならすぐ返る
 int prepare(const std::string& imagePath, int targetWidth);
 
-// 用意済みか（展開に時間がかかるので、まだなら呼び出し側で「処理中」を出す）
-bool isPrepared(const std::string& imagePath, int targetWidth);
+// 用意済みなら段数、まだなら -1（展開に時間がかかるので、まだなら呼び出し側で「処理中」を出す）
+int preparedCount(const std::string& imagePath, int targetWidth);
 
 std::string tierPath(const std::string& imagePath, int index);
 
