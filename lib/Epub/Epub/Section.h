@@ -22,7 +22,7 @@ class Section {
                               uint8_t charSpacing);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
   void expandLoneImage(Page& page) const;
-  bool isLoneImageSection();
+  bool isLoneImageSection(FsFile& sectionFile) const;
   void refitLoneImageToArea(Page& page) const;
 
   // 画像 1 枚だけのページを広げる先（ページ座標。余白の外まで含むので負になりうる）。w==0 なら広げない

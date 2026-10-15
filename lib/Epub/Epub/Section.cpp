@@ -207,8 +207,9 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
                              (viewportWidth < viewportHeight) == (fileViewportWidth < fileViewportHeight);
       if (sameShape) {
         serialization::readPod(file, pageCount);
+        const bool lone = pageCount == 1 && isLoneImageSection(file);
         file.close();
-        if (pageCount == 1 && isLoneImageSection()) {
+        if (lone) {
           refitLoneImage = true;
           LOG_DBG("SCT", "Settings changed, keeping image-only section:%s", loadNote);
           const std::string diff = loadNote;
@@ -433,12 +434,17 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
   return page;
 }
 
-// 1 ページ目が画像 1 枚だけか（設定が変わっても作り直さずに使える章か）
-bool Section::isLoneImageSection() {
-  const int saved = currentPage;
-  currentPage = 0;
-  const auto page = loadPageFromSectionFile();
-  currentPage = saved;
+// 1 ページ目が画像 1 枚だけか（設定が変わっても作り直さずに使える章か）。
+// 開いている章のファイルから読む（開き直すと、設定が違うだけで毎ページ 1 回余計に探すことになる）
+bool Section::isLoneImageSection(FsFile& sectionFile) const {
+  sectionFile.seek(HEADER_SIZE - sizeof(uint32_t) * 2);
+  uint32_t lutOffset;
+  serialization::readPod(sectionFile, lutOffset);
+  sectionFile.seek(lutOffset);
+  uint32_t pagePos;
+  serialization::readPod(sectionFile, pagePos);
+  sectionFile.seek(pagePos);
+  const auto page = Page::deserialize(sectionFile);
   return page && page->elements.size() == 1 && page->elements[0]->getTag() == TAG_PageImage;
 }
 
