@@ -1103,14 +1103,14 @@ void EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
     LOG_ERR("ERS", "Could not save progress!");
   }
 }
-// 段の BMP を横向き（本体を右に倒した向き＝LandscapeClockwise）で、見える範囲いっぱいに中央寄せで描く
+// 段の BMP を横向き（本体を左に倒した向き＝LandscapeCounterClockwise）で、見える範囲いっぱいに中央寄せで描く
 void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
   HalFile file;
   if (!Storage.openFileForRead("ERS", path, file)) return;
   Bitmap bmp(file);
   if (bmp.parseHeaders() == BmpReaderError::Ok) {
     const auto saved = renderer.getOrientation();
-    renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+    renderer.setOrientation(GfxRenderer::Orientation::LandscapeCounterClockwise);
     int top, right, bottom, left;
     renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
     const int areaW = renderer.getScreenWidth() - left - right;
@@ -1127,10 +1127,10 @@ void EpubReaderActivity::drawTierBitmap(const std::string& path) const {
 }
 
 // 画像だけのページを段に分け、今の段を横向きで表示する。段に分けられなければ false（普通に描く）
-// 段の幅＝横向き（右倒し）にしたときの見える範囲の幅
+// 段の幅＝横向き（左倒し）にしたときの見える範囲の幅
 int EpubReaderActivity::tierAreaWidth() const {
   const auto saved = renderer.getOrientation();
-  renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+  renderer.setOrientation(GfxRenderer::Orientation::LandscapeCounterClockwise);
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   const int areaW = renderer.getScreenWidth() - left - right;
