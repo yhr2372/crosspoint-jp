@@ -22,12 +22,16 @@ class Section {
                               uint8_t charSpacing);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
   void expandLoneImage(Page& page) const;
+  bool isLoneImageSection();
+  void refitLoneImageToArea(Page& page) const;
 
   // 画像 1 枚だけのページを広げる先（ページ座標。余白の外まで含むので負になりうる）。w==0 なら広げない
   int16_t fullBleedX = 0;
   int16_t fullBleedY = 0;
   uint16_t fullBleedW = 0;
   uint16_t fullBleedH = 0;
+  // 設定が違うまま使っている画像だけの章（読み込んだページの画像を今の枠に収め直す）
+  bool refitLoneImage = false;
 
  public:
   uint16_t pageCount = 0;
@@ -40,7 +44,7 @@ class Section {
         renderer(renderer),
         filePath(epub->getCachePath() + "/sections/" + std::to_string(spineIndex) + ".bin") {}
   ~Section() = default;
-  // createSectionFile() の前に呼ぶ。画像だけのページはこの枠いっぱいに収め直す
+  // loadSectionFile() / createSectionFile() の前に呼ぶ。画像だけのページはこの枠いっぱいに収め直す
   void setFullBleedArea(int16_t x, int16_t y, uint16_t w, uint16_t h) {
     fullBleedX = x;
     fullBleedY = y;

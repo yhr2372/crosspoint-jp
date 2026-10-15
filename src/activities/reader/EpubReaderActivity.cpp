@@ -154,6 +154,19 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  // 操作があれば次のページの用意は見送る（その操作で描き直したあと、また予定し直す）
+  if (mappedInput.wasAnyPressed()) {
+    prefetchDueAt = 0;
+  } else if (prefetchDueAt != 0 && static_cast<long>(millis() - prefetchDueAt) >= 0 && !RenderLock::peek()) {
+    RenderLock lock(*this);
+    if (prefetchDueAt != 0) {
+      prefetchDueAt = 0;
+      const unsigned long prefetchStart = millis();
+      prefetchNextPage(prefetchViewportW, prefetchViewportH);
+      debugPrefetchMs = millis() - prefetchStart;
+    }
+  }
+
   if (automaticPageTurnActive) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
         mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -839,7 +852,9 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
     const auto filepath = epub->getSpineItem(currentSpineIndex).href;
     LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
+    const unsigned long sectionStart = millis();
     section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
+    section->setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
 
     const float lineCompression = SETTINGS.getReaderLineCompression(verticalMode);
     renderer.setVerticalCharSpacing(SETTINGS.getVerticalCharSpacingPercent());
@@ -889,6 +904,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     } else {
       LOG_DBG("ERS", "Cache found, skipping build...");
     }
+    debugSectionMs = millis() - sectionStart;
 
     if (nextPageNumber == UINT16_MAX) {
       section->currentPage = section->pageCount - 1;
@@ -977,7 +993,10 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     }
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
-    prefetchNextPage(viewportWidth, viewportHeight);
+    debugDrawMs = millis() - start;
+    prefetchViewportW = viewportWidth;
+    prefetchViewportH = viewportHeight;
+    prefetchDueAt = millis() + PREFETCH_IDLE_MS;
   }
   silentIndexNextChapterIfNeeded(viewportWidth, viewportHeight);
   {
@@ -986,10 +1005,24 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     saveProgress(currentSpineIndex, section->currentPage, section->pageCount, nearEnd, percent);
   }
 
+  if (SETTINGS.debugDisplay) drawDebugTimings();
+
   if (pendingScreenshot) {
     pendingScreenshot = false;
     ScreenshotUtil::takeScreenshot(renderer);
   }
+}
+
+// 設定の「デバッグ表示」がオンのときだけ、このページの準備にかかった時間を左上に出す。
+// 章=章の読み込み／作成、描画=画像の展開と画面への描き込み、先読み=前のページで次（このページ）を用意した時間
+void EpubReaderActivity::drawDebugTimings() {
+  char buf[64];
+  snprintf(buf, sizeof(buf), "sec %lu  draw %lu  pre %lu ms", debugSectionMs, debugDrawMs, debugPrefetchMs);
+  renderer.fillRect(0, 0, renderer.getScreenWidth(), 28, false);
+  renderer.drawText(UI_10_FONT_ID, 6, 4, buf, true);
+  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  debugSectionMs = 0;
+  debugPrefetchMs = 0;
 }
 
 void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportWidth, const uint16_t viewportHeight) {
@@ -1015,6 +1048,7 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
 bool EpubReaderActivity::loadOrBuildSection(Section& target, const uint16_t viewportWidth,
                                             const uint16_t viewportHeight) {
   const auto& silentDs = SETTINGS.getDirectionSettings(verticalMode);
+  target.setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
   if (target.loadSectionFile(SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
                              silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth, viewportHeight,
                              silentDs.hyphenationEnabled, silentDs.firstLineIndent, SETTINGS.embeddedStyle,
@@ -1025,7 +1059,6 @@ bool EpubReaderActivity::loadOrBuildSection(Section& target, const uint16_t view
   LOG_DBG("ERS", "Silently indexing chapter: %d", target.getSpineIndex());
   const int silentHeadingFontIds[6] = {
       SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
-  target.setFullBleedArea(fullBleedX, fullBleedY, fullBleedW, fullBleedH);
   if (!target.createSectionFile(SETTINGS.getReaderFontId(verticalMode), SETTINGS.getReaderLineCompression(verticalMode),
                                 silentDs.extraParagraphSpacing, silentDs.paragraphAlignment, viewportWidth,
                                 viewportHeight, silentDs.hyphenationEnabled, silentDs.firstLineIndent,

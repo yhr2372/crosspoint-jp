@@ -177,7 +177,22 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
         hyphenationEnabled != fileHyphenationEnabled || firstLineIndent != fileFirstLineIndent ||
         embeddedStyle != fileEmbeddedStyle || imageRendering != fileImageRendering ||
         verticalMode != fileVerticalMode || charSpacing != fileCharSpacing) {
-      file.close();
+      // 画像 1 枚だけの章（漫画のページ）は文字の設定に左右されないので、書字方向と画面の縦横が
+      // 同じなら作り直さずに使う。余白などで変わる位置は loadPageFromSectionFile() で枠に収め直す
+      const bool sameShape = verticalMode == fileVerticalMode &&
+                             (viewportWidth < viewportHeight) == (fileViewportWidth < fileViewportHeight);
+      if (sameShape) {
+        serialization::readPod(file, pageCount);
+        file.close();
+        if (pageCount == 1 && isLoneImageSection()) {
+          refitLoneImage = true;
+          LOG_DBG("SCT", "Settings changed, keeping image-only section");
+          return true;
+        }
+        pageCount = 0;
+      } else {
+        file.close();
+      }
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       clearCache();
       return false;
@@ -383,7 +398,34 @@ std::unique_ptr<Page> Section::loadPageFromSectionFile() {
 
   auto page = Page::deserialize(file);
   file.close();
+  if (page && refitLoneImage) refitLoneImageToArea(*page);
   return page;
+}
+
+// 1 ページ目が画像 1 枚だけか（設定が変わっても作り直さずに使える章か）
+bool Section::isLoneImageSection() {
+  const int saved = currentPage;
+  currentPage = 0;
+  const auto page = loadPageFromSectionFile();
+  currentPage = saved;
+  return page && page->elements.size() == 1 && page->elements[0]->getTag() == TAG_PageImage;
+}
+
+// 作ったときと余白などが違う章の画像を、今の fullBleed の枠の中央に収め直す（縮めるだけ）
+void Section::refitLoneImageToArea(Page& page) const {
+  if (fullBleedW == 0 || fullBleedH == 0 || page.elements.size() != 1) return;
+  if (page.elements[0]->getTag() != TAG_PageImage) return;
+  const auto& image = static_cast<PageImage&>(*page.elements[0]).getImageBlock();
+  if (image.getWidth() <= 0 || image.getHeight() <= 0) return;
+
+  const float scale = std::min(1.0f, std::min(static_cast<float>(fullBleedW) / image.getWidth(),
+                                              static_cast<float>(fullBleedH) / image.getHeight()));
+  const int w = std::max(1, static_cast<int>(image.getWidth() * scale));
+  const int h = std::max(1, static_cast<int>(image.getHeight() * scale));
+  const int x = fullBleedX + (fullBleedW - w) / 2;
+  const int y = fullBleedY + (fullBleedH - h) / 2;
+  auto block = std::make_shared<ImageBlock>(image.getImagePath(), static_cast<int16_t>(w), static_cast<int16_t>(h));
+  page.elements[0] = std::make_shared<PageImage>(std::move(block), static_cast<int16_t>(x), static_cast<int16_t>(y));
 }
 
 std::optional<uint16_t> Section::getPageForAnchor(const std::string& anchor) const {

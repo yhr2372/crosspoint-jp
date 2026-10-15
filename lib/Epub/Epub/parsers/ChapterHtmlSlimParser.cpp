@@ -501,7 +501,12 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                 previous.close();
               }
             }
-            if (Storage.openFileForWrite("EHP", cachedImagePath, cachedImageFile)) {
+            // 同じ画像がもう取り出してあれば（大きさが EPUB の中と同じなら）書き直さない
+            size_t itemSize = 0;
+            if (previousImageSize > 0 && self->epub->getItemSize(resolvedPath, &itemSize) &&
+                static_cast<int64_t>(itemSize) == previousImageSize) {
+              extractSuccess = true;
+            } else if (Storage.openFileForWrite("EHP", cachedImagePath, cachedImageFile)) {
               extractSuccess = self->epub->readItemContentsToStream(resolvedPath, cachedImageFile, 4096);
               cachedImageFile.flush();
               const int64_t newImageSize = static_cast<int64_t>(cachedImageFile.size());
