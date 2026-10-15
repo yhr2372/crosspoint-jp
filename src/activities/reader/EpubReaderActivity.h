@@ -3,6 +3,7 @@
 #include <Epub/FootnoteEntry.h>
 #include <Epub/Section.h>
 
+#include <atomic>
 #include <optional>
 
 #include "EpubReaderMenuActivity.h"
@@ -40,10 +41,11 @@ class EpubReaderActivity final : public Activity {
   int prefetchedSpine = -1;       // 次のページの段を先に作り終えた位置（同じページで繰り返さない）
   int prefetchedPage = -1;
   bool prefetchedTierMode = false;
-  // 次のページの用意は、表示してから操作がないまま PREFETCH_IDLE_MS たってから loop() で始める
+  // 次のページの用意は、表示してから操作がないまま PREFETCH_IDLE_MS たってから描画タスクに頼む
   // （表示の直後に始めると、その間ボタンが待たされて次の段がすぐ出ない）
   static constexpr unsigned long PREFETCH_IDLE_MS = 1500;
-  unsigned long prefetchDueAt = 0;  // 0 なら予定なし
+  unsigned long prefetchDueAt = 0;             // 0 なら予定なし
+  std::atomic<bool> prefetchRequested{false};  // loop() が立て、render() が用意だけして下ろす
   uint16_t prefetchViewportW = 0;
   uint16_t prefetchViewportH = 0;
   // デバッグ表示（設定）用の計測値（ms）

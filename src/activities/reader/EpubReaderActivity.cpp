@@ -154,17 +154,15 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  // 操作があれば次のページの用意は見送る（その操作で描き直したあと、また予定し直す）
+  // 操作があれば次のページの用意は見送る（その操作で描き直したあと、また予定し直す）。
+  // 用意そのものは描画タスクに頼む（ここで作ると、その間は電源ボタンも含めて操作を受け付けなくなる）
   if (mappedInput.wasAnyPressed()) {
     prefetchDueAt = 0;
-  } else if (prefetchDueAt != 0 && static_cast<long>(millis() - prefetchDueAt) >= 0 && !RenderLock::peek()) {
-    RenderLock lock(*this);
-    if (prefetchDueAt != 0) {
-      prefetchDueAt = 0;
-      const unsigned long prefetchStart = millis();
-      prefetchNextPage(prefetchViewportW, prefetchViewportH);
-      debugPrefetchMs = millis() - prefetchStart;
-    }
+    prefetchRequested = false;
+  } else if (prefetchDueAt != 0 && static_cast<long>(millis() - prefetchDueAt) >= 0) {
+    prefetchDueAt = 0;
+    prefetchRequested = true;
+    requestUpdate();
   }
 
   if (automaticPageTurnActive) {
@@ -736,6 +734,16 @@ void EpubReaderActivity::finishBookFile(bool remove) {
 // TODO: Failure handling
 void EpubReaderActivity::render(RenderLock&& lock) {
   if (!epub) {
+    return;
+  }
+
+  // loop() から頼まれた次のページの用意だけをする（画面は描き直さない）
+  if (prefetchRequested.exchange(false)) {
+    if (section) {
+      const unsigned long prefetchStart = millis();
+      prefetchNextPage(prefetchViewportW, prefetchViewportH);
+      debugPrefetchMs = millis() - prefetchStart;
+    }
     return;
   }
 
