@@ -1016,7 +1016,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     saveProgress(currentSpineIndex, section->currentPage, section->pageCount, nearEnd, percent);
   }
 
-  if (SETTINGS.debugDisplay) drawDebugTimings();
+  if (SETTINGS.debugDisplay) writeDebugLog();
 
   if (pendingScreenshot) {
     pendingScreenshot = false;
@@ -1029,7 +1029,27 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 // 2 行目: 章キャッシュの結果（hit=使えた / kept=設定違いだが画像だけなので使った / none=無かった /
 // miss=設定違いで作り直した。後ろは「保存値/今の値」）、JPEG から画像を作った回数、段を作った回数。
 // 同じ内容を /.crosspoint/read_perf.log にも追記する（カードを PC で開いて回収できる）
-void EpubReaderActivity::drawDebugTimings() {
+// 画面左上の数字を、白黒パスのフレームバッファに描く（画面の書き換えはしない）。
+// 書き換えを 1 回足すと、X3 の灰色表示（待受の壁紙など）が前提にしているパネルの状態が崩れて、
+// 少したってから色が反転する。draw はまだ測り終わっていないので 1 つ前のページの値を出す
+void EpubReaderActivity::drawDebugOverlay() {
+  char line1[64];
+  snprintf(line1, sizeof(line1), "sec %lu  draw(prev) %lu  pre %lu ms", debugSectionMs, debugDrawMs, debugPrefetchMs);
+  char line2[128];
+  snprintf(line2, sizeof(line2), "sec:%s dec:%d tier:%d", debugSectionNote[0] ? debugSectionNote : "-",
+           ImageBlock::decodeCount - debugDecodeBase, image_tiers::buildCount - debugTierBase);
+  renderer.fillRect(0, 0, renderer.getScreenWidth(), DEBUG_OVERLAY_H, false);
+  renderer.drawText(UI_10_FONT_ID, 6, 4, line1, true);
+  renderer.drawText(UI_10_FONT_ID, 6, 28, line2, true);
+}
+
+// 灰色パスでは数字の欄に灰色の印を付けない（白黒パスの文字をそのまま見せる）
+void EpubReaderActivity::clearDebugOverlayGray() const {
+  renderer.fillRect(0, 0, renderer.getScreenWidth(), DEBUG_OVERLAY_H, true);
+}
+
+// このページの計測値を /.crosspoint/read_perf.log に書いて、次のページに向けて数え直す
+void EpubReaderActivity::writeDebugLog() {
   const int decoded = ImageBlock::decodeCount - debugDecodeBase;
   const int tiersBuilt = image_tiers::buildCount - debugTierBase;
   debugDecodeBase = ImageBlock::decodeCount;
@@ -1040,10 +1060,6 @@ void EpubReaderActivity::drawDebugTimings() {
   char line2[128];
   snprintf(line2, sizeof(line2), "sec:%s dec:%d tier:%d", debugSectionNote[0] ? debugSectionNote : "-", decoded,
            tiersBuilt);
-  renderer.fillRect(0, 0, renderer.getScreenWidth(), 52, false);
-  renderer.drawText(UI_10_FONT_ID, 6, 4, line1, true);
-  renderer.drawText(UI_10_FONT_ID, 6, 28, line2, true);
-  renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
   char logLine[320];
   const int len =
@@ -1246,6 +1262,7 @@ bool EpubReaderActivity::renderTier(const std::string& imagePath) {
 
   renderer.clearScreen();
   drawTierBitmap(file);
+  if (SETTINGS.debugDisplay) drawDebugOverlay();
   ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
 
   // 普通の画像ページと同じく、アンチエイリアスが有効なら灰色の 2 パスを重ねる（白黒を保存できたときだけ）
@@ -1254,10 +1271,12 @@ bool EpubReaderActivity::renderTier(const std::string& imagePath) {
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     drawTierBitmap(file);
+    if (SETTINGS.debugDisplay) clearDebugOverlayGray();
     renderer.copyGrayscaleLsbBuffers();
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
     drawTierBitmap(file);
+    if (SETTINGS.debugDisplay) clearDebugOverlayGray();
     renderer.copyGrayscaleMsbBuffers();
     renderer.displayGrayBuffer();
     renderer.setRenderMode(GfxRenderer::BW);
@@ -1311,6 +1330,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // ステータスバーはグレーパスで描き直さないので常に Sharp で描く
   renderer.setGlyphInk(GfxRenderer::GlyphInk::Sharp);
   renderStatusBar();
+  if (SETTINGS.debugDisplay) drawDebugOverlay();
   const auto tBwRender = millis();
 
   if (imagePageWithAA) {
@@ -1330,6 +1350,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       page->render(renderer, SETTINGS.getReaderFontId(verticalMode), orientedMarginLeft, orientedMarginTop,
                    viewportWidth);
       renderer.setGlyphInk(GfxRenderer::GlyphInk::Sharp);
+      if (SETTINGS.debugDisplay) drawDebugOverlay();  // 画像を描き直すと上に重なるので描き直す
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     } else {
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
@@ -1353,6 +1374,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, SETTINGS.getReaderFontId(verticalMode), orientedMarginLeft, orientedMarginTop,
                  viewportWidth);
+    if (SETTINGS.debugDisplay) clearDebugOverlayGray();
     renderer.copyGrayscaleLsbBuffers();
     const auto tGrayLsb = millis();
 
@@ -1361,6 +1383,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
     page->render(renderer, SETTINGS.getReaderFontId(verticalMode), orientedMarginLeft, orientedMarginTop,
                  viewportWidth);
+    if (SETTINGS.debugDisplay) clearDebugOverlayGray();
     renderer.copyGrayscaleMsbBuffers();
     const auto tGrayMsb = millis();
 
