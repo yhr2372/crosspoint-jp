@@ -1312,6 +1312,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // Font prewarm: scan pass accumulates text, then prewarm, then real render
   auto* fcm = renderer.getFontCacheManager();
   auto scope = fcm->createPrewarmScope();
+  // 画像の表示用 BMP は、文字の先読み（フォントのデータを確保する）より前に作っておく。JPEG の展開は
+  // 空きメモリが 52KB 以上ないと断られるので、文字と画像が同じページにあると先読みのあとでは足りず、
+  // 画像だけ出ないことがあった（実機の詰将棋の盤面）。scope を作った時点でフォントのキャッシュは空
+  for (const auto& element : page->elements) {
+    if (element->getTag() == TAG_PageImage) {
+      static_cast<const PageImage&>(*element).getImageBlock().ensureJpegBmpCache();
+    }
+  }
   page->render(renderer, SETTINGS.getReaderFontId(verticalMode), orientedMarginLeft, orientedMarginTop,
                viewportWidth);  // scan pass
   scope.endScanAndPrewarm();
