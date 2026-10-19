@@ -11,9 +11,28 @@ enum class VerticalBehavior : uint8_t {
   TateChuYoko,  // 1-2 digit numbers - horizontal-in-vertical
 };
 
+// 縦書きでも立てたまま描く記号（UAX #50 の vo=U のうち日本語の本文に出るもの）。
+// ☗☖▲△（棋譜）、①、℃、Ⅲ、○●□■、★、♪、※、×÷± など。
+// 矢印（U+2190..21FF）・罫線（U+2500..257F、ダッシュ代わりの──）・≒などの数学記号は
+// 縦書きでは向きを回すのが正しいので含めない。
+inline bool isUprightSymbol(uint32_t cp) {
+  if (cp == 0x00A7 || cp == 0x00A9 || cp == 0x00AE || cp == 0x00B1 || cp == 0x00B6) return true;  // § © ® ± ¶
+  if (cp == 0x00D7 || cp == 0x00F7) return true;                                                  // × ÷
+  if (cp == 0x203B) return true;                                                                  // ※
+  if (cp >= 0x2100 && cp <= 0x218F) return true;                  // Letterlike Symbols, Number Forms
+  if (cp == 0x221E || cp == 0x2234 || cp == 0x2235) return true;  // ∞ ∴ ∵
+  if (cp >= 0x2460 && cp <= 0x24FF) return true;                  // Enclosed Alphanumerics
+  if (cp >= 0x25A0 && cp <= 0x27BF) return true;                  // Geometric Shapes, Misc Symbols, Dingbats
+  if (cp >= 0x2B50 && cp <= 0x2B59) return true;                  // ⭐ etc.
+  if (cp >= 0x3190 && cp <= 0x319F) return true;                  // Kanbun
+  if (cp >= 0x31F0 && cp <= 0x31FF) return true;                  // Katakana Phonetic Extensions
+  return false;
+}
+
 // Determine if a codepoint should be drawn upright in vertical text.
 // CJK ideographs, kana, CJK symbols, fullwidth forms, etc.
 inline bool isUprightInVertical(uint32_t cp) {
+  if (isUprightSymbol(cp)) return true;
   if (cp >= 0x4E00 && cp <= 0x9FFF) return true;  // CJK Unified Ideographs
   if (cp >= 0x3400 && cp <= 0x4DBF) return true;  // CJK Extension A
   if (cp >= 0x3040 && cp <= 0x309F) return true;  // Hiragana

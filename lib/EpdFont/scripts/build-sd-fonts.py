@@ -157,8 +157,11 @@ def build_family(family: dict, output_base: Path) -> tuple[str, bool, str]:
         cmd.append("--force-autohint")
 
     if "codepoints_file" in family:
-        cp_file = SCRIPT_DIR / family["codepoints_file"]
-        cmd.extend(["--codepoints-file", str(cp_file)])
+        cp_files = family["codepoints_file"]
+        if isinstance(cp_files, str):
+            cp_files = [cp_files]
+        for cp_file in cp_files:
+            cmd.extend(["--codepoints-file", str(SCRIPT_DIR / cp_file)])
 
     # Run fontconvert_sdcard.py
     try:

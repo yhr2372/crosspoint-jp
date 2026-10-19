@@ -203,8 +203,8 @@ families:
 
   - name: NotoSansJp
     description: "Sans-serif Japanese (JIS X 0213)"
-    intervals: ascii,latin1,punctuation,cjk
-    codepoints_file: codepoints/japanese_jis0213.txt
+    intervals: ascii,latin1,punctuation,symbols,cjk
+    codepoints_file: [codepoints/japanese_jis0213.txt, codepoints/japanese_symbols.txt]
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular: {url: "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"}
@@ -212,8 +212,8 @@ families:
 
   - name: BIZUDGothic
     description: "UD Gothic Japanese (MORISAWA, optimized for readability)"
-    intervals: ascii,latin1,punctuation,cjk
-    codepoints_file: codepoints/japanese_jis0213.txt
+    intervals: ascii,latin1,punctuation,symbols,cjk
+    codepoints_file: [codepoints/japanese_jis0213.txt, codepoints/japanese_symbols.txt]
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular: {url: "https://github.com/googlefonts/morisawa-biz-ud-gothic/raw/main/fonts/ttf/BIZUDGothic-Regular.ttf"}
@@ -221,8 +221,8 @@ families:
 
   - name: NotoSerifJp
     description: "Serif Japanese (JIS X 0213)"
-    intervals: ascii,latin1,punctuation,cjk
-    codepoints_file: codepoints/japanese_jis0213.txt
+    intervals: ascii,latin1,punctuation,symbols,cjk
+    codepoints_file: [codepoints/japanese_jis0213.txt, codepoints/japanese_symbols.txt]
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular: {url: "https://github.com/notofonts/noto-cjk/raw/main/Serif/Variable/OTF/Subset/NotoSerifJP-VF.otf", variable: {wght: 400}}
@@ -230,8 +230,8 @@ families:
 
   - name: BIZUDMincho
     description: "UD Mincho Japanese (MORISAWA, optimized for readability)"
-    intervals: ascii,latin1,punctuation,cjk
-    codepoints_file: codepoints/japanese_jis0213.txt
+    intervals: ascii,latin1,punctuation,symbols,cjk
+    codepoints_file: [codepoints/japanese_jis0213.txt, codepoints/japanese_symbols.txt]
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular: {url: "https://github.com/googlefonts/morisawa-biz-ud-mincho/raw/main/fonts/ttf/BIZUDMincho-Regular.ttf"}

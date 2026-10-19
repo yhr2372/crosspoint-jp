@@ -127,6 +127,8 @@ static constexpr KanaComposition dakutenTable[] = {
     {0x3078, 0x3079},  // へ → べ
     {0x307B, 0x307C},  // ほ → ぼ
     {0x3046, 0x3094},  // う → ゔ
+    {0x309D, 0x309E},  // ゝ → ゞ
+    {0x3033, 0x3034},  // 〳 → 〴
     // カタカナ
     {0x30AB, 0x30AC},  // カ → ガ
     {0x30AD, 0x30AE},  // キ → ギ
@@ -153,6 +155,7 @@ static constexpr KanaComposition dakutenTable[] = {
     {0x30F0, 0x30F8},  // ヰ → ヸ
     {0x30F1, 0x30F9},  // ヱ → ヹ
     {0x30F2, 0x30FA},  // ヲ → ヺ
+    {0x30FD, 0x30FE},  // ヽ → ヾ
 };
 
 // 半濁点(U+309A)で合成可能な仮名ペア
@@ -174,6 +177,16 @@ static constexpr KanaComposition handakutenTable[] = {
 static uint32_t lookupComposition(uint32_t base, const KanaComposition* table, size_t count) {
   for (size_t i = 0; i < count; ++i) {
     if (table[i].base == base) return table[i].composed;
+  }
+  return 0;
+}
+
+uint32_t utf8ComposeKana(const uint32_t base, const uint32_t mark) {
+  if (mark == COMBINING_DAKUTEN) {
+    return lookupComposition(base, dakutenTable, sizeof(dakutenTable) / sizeof(dakutenTable[0]));
+  }
+  if (mark == COMBINING_HANDAKUTEN) {
+    return lookupComposition(base, handakutenTable, sizeof(handakutenTable) / sizeof(handakutenTable[0]));
   }
   return 0;
 }

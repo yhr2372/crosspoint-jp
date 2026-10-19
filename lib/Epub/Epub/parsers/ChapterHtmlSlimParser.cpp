@@ -1352,7 +1352,8 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     // 意味を持つ空白であり、ASCII 空白のように折りたたむと消えてしまう。
     // フォント側に U+3000 のグリフ（空白・全角送り）があることが前提で、
     // SD カードフォント（fontconvert_sdcard.py の cjk 範囲）と内蔵 CJK UI フォントは持っている。
-    if (isCjkCodepointForSplit(cp)) {
+    // 縦書きでは ☗▲① のような記号も1字ずつ立てて並べる（まとめて1語にすると横倒しになる）。
+    if (isCjkCodepointForSplit(cp) || (self->verticalMode && VerticalTextUtils::isUprightSymbol(cp))) {
       // CJK character: flush any buffered content first
       if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
@@ -1362,6 +1363,20 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       char cjkWord[5] = {0};  // Max 4 bytes for UTF-8 + null terminator
       for (int j = 0; j < charLen && j < 4; j++) {
         cjkWord[j] = s[i + j];
+      }
+      // 「ゝ＋結合用の濁点(U+3099)」のような分解形は、濁点が別の字として横に出て化けるので、
+      // 合成済みの1字（ゞ）にまとめる。濁点・半濁点はどちらも3バイト。
+      if (i + charLen + 3 <= len && static_cast<uint8_t>(s[i + charLen]) == 0xE3 &&
+          static_cast<uint8_t>(s[i + charLen + 1]) == 0x82) {
+        const uint32_t mark = decodeUtf8Codepoint(&s[i + charLen], 3);
+        const uint32_t composed = utf8ComposeKana(cp, mark);
+        if (composed != 0) {
+          cjkWord[0] = static_cast<char>(0xE0 | (composed >> 12));
+          cjkWord[1] = static_cast<char>(0x80 | ((composed >> 6) & 0x3F));
+          cjkWord[2] = static_cast<char>(0x80 | (composed & 0x3F));
+          cjkWord[3] = '\0';
+          i += 3;
+        }
       }
       if (self->verticalMode) {
         self->currentTextBlock->addWord(cjkWord, EpdFontFamily::REGULAR, VerticalTextUtils::VerticalBehavior::Upright,

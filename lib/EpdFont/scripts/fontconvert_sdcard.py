@@ -50,6 +50,9 @@ INTERVAL_PRESETS = {
                     (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0xFF00, 0xFFEF)],
     "cherokee":    [(0x13A0, 0x13FF), (0xAB70, 0xABBF)],
     "tifinagh":    [(0x2D30, 0x2D7F)],
+    # Symbols used in Japanese text (☗☖▲①℃→○★♪ etc.), Greek and Cyrillic
+    "symbols":     [(0x0370, 0x03FF), (0x0400, 0x04FF), (0x2100, 0x2BFF),
+                    (0x3190, 0x319F), (0x31F0, 0x31FF), (0x3200, 0x33FF)],
     # Matches the built-in font intervals from fontconvert.py exactly
     "builtin":     [(0x0000, 0x007F), (0x0080, 0x00FF), (0x0100, 0x017F),
                     (0x01A0, 0x01A1), (0x01AF, 0x01B0), (0x01C4, 0x021F),
@@ -969,10 +972,10 @@ def main():
                         help="Font file for italic style.")
     parser.add_argument("--bolditalic", dest="font_bolditalic",
                         help="Font file for bold-italic style.")
-    parser.add_argument("--codepoints-file", dest="codepoints_file",
+    parser.add_argument("--codepoints-file", dest="codepoints_file", action="append",
                         help="Whitelist file of allowed codepoints (hex, one per line). "
                              "When specified, only codepoints present in both the intervals "
-                             "and this file are included in the output.")
+                             "and this file are included in the output. May be repeated.")
 
     args = parser.parse_args()
 
@@ -1008,12 +1011,13 @@ def main():
     # Apply codepoints whitelist filter if specified
     if args.codepoints_file:
         allowed = set()
-        with open(args.codepoints_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                allowed.add(int(line, 16))
+        for cp_file in args.codepoints_file:
+            with open(cp_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    allowed.add(int(line, 16))
         # Filter intervals to only include allowed codepoints
         filtered = []
         for start, end in intervals:

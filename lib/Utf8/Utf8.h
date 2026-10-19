@@ -44,3 +44,6 @@ inline bool utf8IsCombiningMark(const uint32_t cp) {
 // 日本語仮名の濁点(U+3099)・半濁点(U+309A)をin-placeでNFC合成する。
 // macOS等がNFD形式で書き込んだファイル名を正規化するために使用。
 void utf8NfcNormalizeKana(std::string& str);
+
+// 仮名 base と結合用の濁点(U+3099)・半濁点(U+309A) mark を合成したコードポイントを返す。合成できなければ 0。
+uint32_t utf8ComposeKana(uint32_t base, uint32_t mark);
