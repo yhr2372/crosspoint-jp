@@ -3,6 +3,7 @@
 #include <FsHelpers.h>
 #include <Logging.h>
 #include <Serialization.h>
+#include <Utf8.h>
 #include <XmlParserUtils.h>
 
 #include "../BookMetadataCache.h"
@@ -356,11 +357,14 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
   }
 
   if (self->state == IN_BOOK_TITLE && strcmp(name, "dc:title") == 0) {
+    // 「みすゞ」が「ゝ＋結合用の濁点」で書かれていると、ホーム画面で濁点が別の字になる
+    utf8NfcNormalizeKana(self->title);
     self->state = IN_METADATA;
     return;
   }
 
   if (self->state == IN_BOOK_AUTHOR && strcmp(name, "dc:creator") == 0) {
+    utf8NfcNormalizeKana(self->author);
     self->state = IN_METADATA;
     return;
   }

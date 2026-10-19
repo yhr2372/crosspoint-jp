@@ -157,9 +157,9 @@ that must be reproduced.
 
 `--descender-rows 3` is **required**. The baseline sits on row 17 of the 20-row
 cell, so only 3 rows are left below it — not enough for `g j p q y Q , / ; @`
-and friends, whose descenders were being cut off mid-stroke (36 glyphs in the
-current character set). Making every one of the 7,488 cells 3 rows taller would
-cost 67 KB of flash, so the overflowing rows are stored in a sparse side table
+and friends, whose descenders were being cut off mid-stroke (47 glyphs in the
+current character set). Making every one of the 7,558 cells 3 rows taller would
+cost 68 KB of flash, so the overflowing rows are stored in a sparse side table
 instead (`CJK_UI_DESCENDER_*`, ~400 bytes), which `GfxRenderer` draws right
 below the cell. The main bitmap array is byte-for-byte the same with or without
 this flag.
