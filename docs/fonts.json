@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "baseUrl": "https://github.com/zrn-ns/crosspoint-jp/releases/download/sd-fonts/",
+  "baseUrl": "https://github.com/yhr2372/crosspoint-jp/releases/download/sd-fonts/",
   "families": [
     {
       "name": "Alegreya",
@@ -55,27 +55,27 @@
       "files": [
         {
           "name": "BIZUDGothic_10.cpfont",
-          "size": 2696517
+          "size": 2852457
         },
         {
           "name": "BIZUDGothic_12.cpfont",
-          "size": 3501116
+          "size": 3702107
         },
         {
           "name": "BIZUDGothic_14.cpfont",
-          "size": 4589566
+          "size": 4846101
         },
         {
           "name": "BIZUDGothic_16.cpfont",
-          "size": 5649990
+          "size": 5962981
         },
         {
           "name": "BIZUDGothic_18.cpfont",
-          "size": 7331469
+          "size": 7730989
         },
         {
           "name": "BIZUDGothic_8.cpfont",
-          "size": 2053295
+          "size": 2174011
         }
       ]
     },
@@ -86,27 +86,27 @@
       "files": [
         {
           "name": "BIZUDMincho_10.cpfont",
-          "size": 2686546
+          "size": 2842621
         },
         {
           "name": "BIZUDMincho_12.cpfont",
-          "size": 3477382
+          "size": 3677838
         },
         {
           "name": "BIZUDMincho_14.cpfont",
-          "size": 4510816
+          "size": 4764615
         },
         {
           "name": "BIZUDMincho_16.cpfont",
-          "size": 5594911
+          "size": 5905133
         },
         {
           "name": "BIZUDMincho_18.cpfont",
-          "size": 7179992
+          "size": 7576000
         },
         {
           "name": "BIZUDMincho_8.cpfont",
-          "size": 1974157
+          "size": 2093960
         }
       ]
     },
@@ -439,27 +439,27 @@
       "files": [
         {
           "name": "NotoSansJp_10.cpfont",
-          "size": 4604566
+          "size": 4916956
         },
         {
           "name": "NotoSansJp_12.cpfont",
-          "size": 6460563
+          "size": 6871302
         },
         {
           "name": "NotoSansJp_14.cpfont",
-          "size": 8637927
+          "size": 9163903
         },
         {
           "name": "NotoSansJp_16.cpfont",
-          "size": 10597184
+          "size": 11231165
         },
         {
           "name": "NotoSansJp_18.cpfont",
-          "size": 13260453
+          "size": 14039297
         },
         {
           "name": "NotoSansJp_8.cpfont",
-          "size": 3421808
+          "size": 3668250
         }
       ]
     },
@@ -516,27 +516,27 @@
       "files": [
         {
           "name": "NotoSerifJp_10.cpfont",
-          "size": 3350996
+          "size": 3648614
         },
         {
           "name": "NotoSerifJp_12.cpfont",
-          "size": 4609028
+          "size": 5005514
         },
         {
           "name": "NotoSerifJp_14.cpfont",
-          "size": 6051512
+          "size": 6564990
         },
         {
           "name": "NotoSerifJp_16.cpfont",
-          "size": 7189472
+          "size": 7811984
         },
         {
           "name": "NotoSerifJp_18.cpfont",
-          "size": 9065100
+          "size": 9839910
         },
         {
           "name": "NotoSerifJp_8.cpfont",
-          "size": 2524910
+          "size": 2759296
         }
       ]
     },
