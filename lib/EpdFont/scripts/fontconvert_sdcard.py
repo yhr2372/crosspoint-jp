@@ -609,7 +609,12 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     ppem = size * 150.0 / 72.0
     all_cps = set(g.code_point for g, _ in all_glyphs)
 
-    kern_map = extract_kerning_fonttools(fontfile, all_cps, ppem)
+    # The "symbols" preset (☗①℃, Greek, Cyrillic...) needs no kerning. Its pairs
+    # nearly doubled NotoSansJp's kern tables (30 KB -> 56 KB per style), which
+    # the device holds in RAM, and ran the heap out on pages with bold headings.
+    kern_cps = set(cp for cp in all_cps
+                   if not any(a <= cp <= b for a, b in INTERVAL_PRESETS["symbols"]))
+    kern_map = extract_kerning_fonttools(fontfile, kern_cps, ppem)
     print(f"  [{style_label}] Kerning: {len(kern_map)} pairs extracted", file=sys.stderr)
 
     (kern_left_classes, kern_right_classes, kern_matrix,
