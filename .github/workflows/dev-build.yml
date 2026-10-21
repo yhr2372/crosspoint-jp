@@ -103,6 +103,8 @@ jobs:
           fi
 
           cp "${firmware}" firmware.bin
+          # クラッシュ画面の PC アドレスを addr2line で関数名に戻すため
+          cp "$(dirname "${firmware}")/firmware.elf" firmware.elf
           cp "${bootloader}" bootloader.bin
           cp "${partitions}" partitions.bin
 
@@ -118,6 +120,7 @@ jobs:
             firmware.bin
             bootloader.bin
             partitions.bin
+            firmware.elf
           body: |
             ## Dev Build
 
@@ -134,5 +137,6 @@ jobs:
             | `firmware.bin` | OTAアップデート / フラッシュ書き込み |
             | `bootloader.bin` | 初回書き込み / 復旧用 |
             | `partitions.bin` | 初回書き込み / 復旧用 |
+            | `firmware.elf` | クラッシュ解析用（書き込まない） |
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
