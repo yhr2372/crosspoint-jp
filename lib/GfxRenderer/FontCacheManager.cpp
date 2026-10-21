@@ -150,7 +150,8 @@ void FontCacheManager::PrewarmScope::endScanAndPrewarm() {
 
     uint8_t styleMask = 0;
     for (uint8_t s = 0; s < 4; s++) {
-      if (entry.styleCounts[s] > 0) styleMask |= (1 << s);
+      // 太字などが無いフォント（重ね描きの太字を含む）は通常の字で描くので、通常の字を先読みする
+      if (entry.styleCounts[s] > 0) styleMask |= entry.font->hasStyle(s) ? (1 << s) : 1;
     }
     if (styleMask == 0) styleMask = 1;
 

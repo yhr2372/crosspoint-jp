@@ -18,6 +18,8 @@ static_assert(sizeof(EpdLigaturePair) == 8, "EpdLigaturePair must be 8 bytes to 
 static constexpr uint32_t FNV_OFFSET = 2166136261u;
 static constexpr uint32_t FNV_PRIME = 16777619u;
 
+uint8_t SdCardFont::loadOptions_ = 0;
+
 static uint32_t fnv1a(const uint8_t* data, size_t len, uint32_t hash = FNV_OFFSET) {
   for (size_t i = 0; i < len; i++) {
     hash ^= data[i];
@@ -72,6 +74,8 @@ void SdCardFont::freeStyleKernLigatureData(PerStyle& s) {
   delete[] s.ligaturePairs;
   s.ligaturePairs = nullptr;
   s.kernLigLoaded = false;
+  s.kernLeftEntriesLoaded = s.kernRightEntriesLoaded = 0;
+  s.kernLeftClassesLoaded = s.kernRightClassesLoaded = 0;
 }
 
 void SdCardFont::freeStyleAll(PerStyle& s) {
@@ -112,12 +116,104 @@ void SdCardFont::applyKernLigaturePointers(PerStyle& s, EpdFontData& data) const
   data.kernLeftClasses = s.kernLeftClasses;
   data.kernRightClasses = s.kernRightClasses;
   data.kernMatrix = s.kernMatrix;
-  data.kernLeftEntryCount = s.header.kernLeftEntryCount;
-  data.kernRightEntryCount = s.header.kernRightEntryCount;
-  data.kernLeftClassCount = s.header.kernLeftClassCount;
-  data.kernRightClassCount = s.header.kernRightClassCount;
+  data.kernLeftEntryCount = s.kernLeftEntriesLoaded;
+  data.kernRightEntryCount = s.kernRightEntriesLoaded;
+  data.kernLeftClassCount = s.kernLeftClassesLoaded;
+  data.kernRightClassCount = s.kernRightClassesLoaded;
   data.ligaturePairs = s.ligaturePairs;
   data.ligaturePairCount = s.header.ligaturePairCount;
+}
+
+// 調整表のうち英字（KERN_LATIN_LIMIT 未満）どうしのぶんだけを RAM に置く。
+// 表の項目は字の番号順に並んでいるので、英字の項目は先頭にまとまっている。使われている
+// 組（クラス）だけに番号を振り直し、行列もその行・列だけをファイルから拾う。
+static constexpr uint32_t KERN_LATIN_LIMIT = 0x2100;
+
+bool SdCardFont::loadKernLatinOnly(PerStyle& s, FsFile& file) {
+  const uint16_t fileLeft = s.header.kernLeftEntryCount;
+  const uint16_t fileRight = s.header.kernRightEntryCount;
+  const uint8_t fileLeftClasses = s.header.kernLeftClassCount;
+  const uint8_t fileRightClasses = s.header.kernRightClassCount;
+
+  // 項目（左右合わせて数 KB）はいったん全部読み、英字の先頭ぶんだけを残す
+  std::unique_ptr<EpdKernClassEntry[]> left(new (std::nothrow) EpdKernClassEntry[fileLeft]);
+  std::unique_ptr<EpdKernClassEntry[]> right(new (std::nothrow) EpdKernClassEntry[fileRight]);
+  // クラス番号の読み替え表（旧 1..255 -> 新 1..、0 は使わない）と行列の 1 行ぶん。スタックには大きいのでヒープに置く
+  std::unique_ptr<uint8_t[]> work(new (std::nothrow) uint8_t[256 * 3]);
+  if (!left || !right || !work) {
+    LOG_ERR("SDCF", "Failed to allocate kern work buffers");
+    return false;
+  }
+  uint8_t* leftMap = &work[0];
+  uint8_t* rightMap = &work[256];
+  uint8_t* row = &work[512];
+  memset(leftMap, 0, 512);
+
+  const size_t leftSz = fileLeft * sizeof(EpdKernClassEntry);
+  const size_t rightSz = fileRight * sizeof(EpdKernClassEntry);
+  if (!file.seekSet(s.kernLeftFileOffset) ||
+      file.read(reinterpret_cast<uint8_t*>(left.get()), leftSz) != static_cast<int>(leftSz) ||
+      file.read(reinterpret_cast<uint8_t*>(right.get()), rightSz) != static_cast<int>(rightSz)) {
+    LOG_ERR("SDCF", "Failed to read kern entries");
+    return false;
+  }
+
+  uint16_t nLeft = 0;
+  while (nLeft < fileLeft && left[nLeft].codepoint < KERN_LATIN_LIMIT) nLeft++;
+  uint16_t nRight = 0;
+  while (nRight < fileRight && right[nRight].codepoint < KERN_LATIN_LIMIT) nRight++;
+
+  uint8_t newLeftClasses = 0;
+  for (uint16_t i = 0; i < nLeft; i++) {
+    const uint8_t c = left[i].classId;
+    if (c == 0 || c > fileLeftClasses) continue;
+    if (leftMap[c] == 0) leftMap[c] = ++newLeftClasses;
+    left[i].classId = leftMap[c];
+  }
+  uint8_t newRightClasses = 0;
+  for (uint16_t i = 0; i < nRight; i++) {
+    const uint8_t c = right[i].classId;
+    if (c == 0 || c > fileRightClasses) continue;
+    if (rightMap[c] == 0) rightMap[c] = ++newRightClasses;
+    right[i].classId = rightMap[c];
+  }
+
+  if (newLeftClasses == 0 || newRightClasses == 0) {
+    // 英字の組み合わせが無い（かなだけのフォントなど）: 調整なし
+    s.kernLeftEntriesLoaded = s.kernRightEntriesLoaded = 0;
+    s.kernLeftClassesLoaded = s.kernRightClassesLoaded = 0;
+    return true;
+  }
+
+  s.kernLeftClasses = new (std::nothrow) EpdKernClassEntry[nLeft];
+  s.kernRightClasses = new (std::nothrow) EpdKernClassEntry[nRight];
+  s.kernMatrix = new (std::nothrow) int8_t[static_cast<uint32_t>(newLeftClasses) * newRightClasses];
+  if (!s.kernLeftClasses || !s.kernRightClasses || !s.kernMatrix) {
+    LOG_ERR("SDCF", "Failed to allocate latin kern data (%u+%u+%u bytes)", nLeft * 3u, nRight * 3u,
+            static_cast<unsigned>(newLeftClasses) * newRightClasses);
+    return false;
+  }
+  memcpy(s.kernLeftClasses, left.get(), nLeft * sizeof(EpdKernClassEntry));
+  memcpy(s.kernRightClasses, right.get(), nRight * sizeof(EpdKernClassEntry));
+
+  for (uint16_t oldLeft = 1; oldLeft <= fileLeftClasses; oldLeft++) {
+    if (leftMap[oldLeft] == 0) continue;
+    const uint32_t rowOffset = s.kernMatrixFileOffset + static_cast<uint32_t>(oldLeft - 1) * fileRightClasses;
+    if (!file.seekSet(rowOffset) || file.read(row, fileRightClasses) != static_cast<int>(fileRightClasses)) {
+      LOG_ERR("SDCF", "Failed to read kern matrix row %u", oldLeft);
+      return false;
+    }
+    int8_t* dst = s.kernMatrix + static_cast<uint32_t>(leftMap[oldLeft] - 1) * newRightClasses;
+    for (uint16_t oldRight = 1; oldRight <= fileRightClasses; oldRight++) {
+      if (rightMap[oldRight] != 0) dst[rightMap[oldRight] - 1] = static_cast<int8_t>(row[oldRight - 1]);
+    }
+  }
+
+  s.kernLeftEntriesLoaded = nLeft;
+  s.kernRightEntriesLoaded = nRight;
+  s.kernLeftClassesLoaded = newLeftClasses;
+  s.kernRightClassesLoaded = newRightClasses;
+  return true;
 }
 
 bool SdCardFont::loadStyleKernLigatureData(PerStyle& s) {
@@ -135,7 +231,13 @@ bool SdCardFont::loadStyleKernLigatureData(PerStyle& s) {
     return false;
   }
 
-  if (hasKern) {
+  if (hasKern && (loadOptions_ & LOAD_KERN_LATIN_ONLY)) {
+    if (!loadKernLatinOnly(s, file)) {
+      freeStyleKernLigatureData(s);
+      file.close();
+      return false;
+    }
+  } else if (hasKern) {
     s.kernLeftClasses = new (std::nothrow) EpdKernClassEntry[s.header.kernLeftEntryCount];
     s.kernRightClasses = new (std::nothrow) EpdKernClassEntry[s.header.kernRightEntryCount];
     uint32_t matrixSize = static_cast<uint32_t>(s.header.kernLeftClassCount) * s.header.kernRightClassCount;
@@ -165,6 +267,10 @@ bool SdCardFont::loadStyleKernLigatureData(PerStyle& s) {
       file.close();
       return false;
     }
+    s.kernLeftEntriesLoaded = s.header.kernLeftEntryCount;
+    s.kernRightEntriesLoaded = s.header.kernRightEntryCount;
+    s.kernLeftClassesLoaded = s.header.kernLeftClassCount;
+    s.kernRightClassesLoaded = s.header.kernRightClassCount;
   }
 
   if (hasLig) {
@@ -196,8 +302,8 @@ bool SdCardFont::loadStyleKernLigatureData(PerStyle& s) {
   // Update stubData so kern/ligature is available even before prewarm
   applyKernLigaturePointers(s, s.stubData);
 
-  LOG_DBG("SDCF", "Kern/lig loaded: kernL=%u, kernR=%u, ligs=%u", s.header.kernLeftEntryCount,
-          s.header.kernRightEntryCount, s.header.ligaturePairCount);
+  LOG_DBG("SDCF", "Kern/lig loaded: kernL=%u, kernR=%u, classes=%ux%u, ligs=%u", s.kernLeftEntriesLoaded,
+          s.kernRightEntriesLoaded, s.kernLeftClassesLoaded, s.kernRightClassesLoaded, s.header.ligaturePairCount);
   return true;
 }
 
@@ -326,6 +432,13 @@ bool SdCardFont::load(const char* path) {
       s.vertSectionOffset = readU32(tocBuf + 28);
     }
   }
+
+  if (loadOptions_ & LOAD_SYNTHETIC_BOLD) {
+    // 通常の字だけを使う。太字などは EpdFontFamily が通常の字に落とし、GfxRenderer が重ね描きで太らせる
+    for (uint8_t i = 1; i < MAX_STYLES; i++) styles_[i].present = false;
+  }
+  // 字の幅が変わる読み方をしたときは fontId も変える（古いレイアウトの章を使い回さない）
+  if (loadOptions_ != 0) hash = fnv1a(&loadOptions_, 1, hash);
 
   styleCount_ = styleCount;
   contentHash_ = hash;

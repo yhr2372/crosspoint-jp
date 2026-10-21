@@ -3,6 +3,7 @@
 #include <FontManager.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <SdCardFont.h>
 
 #include "CrossPointSettings.h"
 
@@ -25,8 +26,17 @@ static uint8_t computeHeadingBasePt(uint8_t fontSizeEnum) {
   return fontSizeEnumToPt(headingEnum);
 }
 
+// 設定の省メモリ項目を SdCardFont の読み込み方に写す
+static uint8_t wantedLoadOptions() {
+  uint8_t options = 0;
+  if (SETTINGS.kernLatinOnly) options |= SdCardFont::LOAD_KERN_LATIN_ONLY;
+  if (SETTINGS.syntheticBold) options |= SdCardFont::LOAD_SYNTHETIC_BOLD;
+  return options;
+}
+
 void SdCardFontSystem::begin(GfxRenderer& renderer) {
   registry_.discover();
+  SdCardFont::setLoadOptions(wantedLoadOptions());
 
   // Register this system as the SD font ID resolver in settings.
   // Uses a static trampoline since CrossPointSettings stores a plain function pointer.
@@ -84,8 +94,11 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer, bool isVertical) {
   const bool familyChanged = (currentFamily != wantedFamily);
   const bool basePtChanged = (manager_.loadedBasePt() != wantedBasePt);
   const bool headingPtChanged = (manager_.loadedHeadingBasePt() != wantedHeadingPt);
+  const uint8_t wantedOptions = wantedLoadOptions();
+  const bool optionsChanged = (SdCardFont::loadOptions() != wantedOptions);
 
-  if (!familyChanged && !basePtChanged && !headingPtChanged) return;
+  if (!familyChanged && !basePtChanged && !headingPtChanged && !optionsChanged) return;
+  SdCardFont::setLoadOptions(wantedOptions);
 
   if (!currentFamily.empty()) {
     manager_.unloadAll(renderer);

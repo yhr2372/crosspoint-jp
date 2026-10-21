@@ -63,6 +63,17 @@ class SdCardFont {
   // Returns true if the given style is present in this font file.
   bool hasStyle(uint8_t style) const;
 
+  // 省メモリの読み込み方。load() の前に設定する（変えたらフォントを読み直す）。
+  // LOAD_KERN_LATIN_ONLY: 字間の調整表のうち英字（U+2100 未満）どうしのぶんだけを RAM に置く。
+  //   日本語フォントの表は大半がかなの組み合わせで、NotoSansJp では 30 KB -> 約 4 KB になる。
+  // LOAD_SYNTHETIC_BOLD: 太字などのスタイルを読まず、通常の字を 1px ずらして重ね描きする
+  //   （GfxRenderer の synthBold）。太字の字の一覧・調整表・先読みのぶんが要らなくなる。
+  // どちらも字の幅が変わるので、オンのときは contentHash（= fontId）に混ぜて章のレイアウトを作り直させる。
+  static constexpr uint8_t LOAD_KERN_LATIN_ONLY = 0x01;
+  static constexpr uint8_t LOAD_SYNTHETIC_BOLD = 0x02;
+  static void setLoadOptions(uint8_t options) { loadOptions_ = options; }
+  static uint8_t loadOptions() { return loadOptions_; }
+
   // Number of styles present in this font file.
   uint8_t styleCount() const { return styleCount_; }
 
@@ -144,6 +155,11 @@ class SdCardFont {
     int8_t* kernMatrix = nullptr;
     EpdLigaturePair* ligaturePairs = nullptr;
     bool kernLigLoaded = false;
+    // RAM に置いた調整表の大きさ（LOAD_KERN_LATIN_ONLY のときはファイルの値より小さい）
+    uint16_t kernLeftEntriesLoaded = 0;
+    uint16_t kernRightEntriesLoaded = 0;
+    uint8_t kernLeftClassesLoaded = 0;
+    uint8_t kernRightClassesLoaded = 0;
 
     // Stub EpdFontData returned when not prewarmed
     EpdFontData stubData{};
@@ -172,6 +188,7 @@ class SdCardFont {
 
   PerStyle styles_[MAX_STYLES] = {};
   uint8_t styleCount_ = 0;
+  static uint8_t loadOptions_;
 
   char filePath_[128] = {};
 
@@ -251,6 +268,7 @@ class SdCardFont {
   void freeStyleAll(PerStyle& s);
   void freeStyleKernLigatureData(PerStyle& s);
   bool loadStyleKernLigatureData(PerStyle& s);
+  bool loadKernLatinOnly(PerStyle& s, FsFile& file);
   void applyKernLigaturePointers(PerStyle& s, EpdFontData& data) const;
   void applyGlyphMissCallback(uint8_t styleIdx);
   int32_t findGlobalGlyphIndex(const PerStyle& s, uint32_t codepoint) const;

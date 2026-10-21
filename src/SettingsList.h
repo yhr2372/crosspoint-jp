@@ -190,6 +190,11 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                         StrId::STR_CAT_READER),
       SettingInfo::Toggle(StrId::STR_INVERT_IMAGES, &CrossPointSettings::invertImages, "invertImages",
                           StrId::STR_CAT_READER),
+      // 省メモリ（SdCardFont::LOAD_*）。変えると SD フォントを読み直し、章のレイアウトも作り直す
+      SettingInfo::Toggle(StrId::STR_KERN_LATIN_ONLY, &CrossPointSettings::kernLatinOnly, "kernLatinOnly",
+                          StrId::STR_CAT_READER),
+      SettingInfo::Toggle(StrId::STR_SYNTHETIC_BOLD, &CrossPointSettings::syntheticBold, "syntheticBold",
+                          StrId::STR_CAT_READER),
 
       // --- Controls ---
       SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,

@@ -273,6 +273,10 @@ class CrossPointSettings {
   uint8_t colorMode = LIGHT_MODE;
   // Debug display on sleep screen (shows time info)
   uint8_t debugDisplay = 0;
+  // 省メモリ: SD フォントの字間調整表を英字ぶんだけ RAM に置く（SdCardFont::LOAD_KERN_LATIN_ONLY）
+  uint8_t kernLatinOnly = 1;
+  // 省メモリ: SD フォントの太字を読まず、通常の字を重ね描きして太らせる（SdCardFont::LOAD_SYNTHETIC_BOLD）
+  uint8_t syntheticBold = 1;
 
   // OTA update channel. Nested: RC also accepts releases, DEV also accepts both.
   // Values must stay in sync with OtaUpdater::Channel.
