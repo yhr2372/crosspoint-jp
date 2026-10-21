@@ -123,162 +123,167 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
     return gpio.deviceIsX4() && SETTINGS.sleepScreen == S::DYNAMIC_WALLPAPER;
   };
 
-  std::vector<SettingInfo> v = {
-      // --- Display ---
-      // スリープ画面（親）
-      SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen,
-                        {StrId::STR_DARK, StrId::STR_LIGHT, StrId::STR_CUSTOM, StrId::STR_COVER, StrId::STR_NONE_OPT,
-                         StrId::STR_COVER_CUSTOM, StrId::STR_DYNAMIC_WALLPAPER},
-                        "sleepScreen", StrId::STR_CAT_DISPLAY),
-      //   └ カバー: 収め方
-      SettingInfo::Enum(StrId::STR_SLEEP_COVER_MODE, &CrossPointSettings::sleepScreenCoverMode,
-                        {StrId::STR_FIT, StrId::STR_CROP}, "sleepScreenCoverMode", StrId::STR_CAT_DISPLAY)
-          .dependsOn(sleepUsesCover),
-      //   └ カスタム・カバー: 画像フィルター
-      SettingInfo::Enum(StrId::STR_SLEEP_COVER_FILTER, &CrossPointSettings::sleepScreenCoverFilter,
-                        {StrId::STR_FILTER_GRAYSCALE, StrId::STR_FILTER_CONTRAST, StrId::STR_INVERTED},
-                        "sleepScreenCoverFilter", StrId::STR_CAT_DISPLAY)
-          .dependsOn(sleepUsesBitmap),
-      //   └ 動的壁紙: 種類
-      SettingInfo::Enum(StrId::STR_DYNAMIC_WALLPAPER_STYLE, &CrossPointSettings::dynamicWallpaperStyle,
-                        {StrId::STR_DW_WATER_LEVEL, StrId::STR_DW_DOT_GRID, StrId::STR_DW_SQUARE_GRID},
-                        "dynamicWallpaperStyle", StrId::STR_CAT_DISPLAY)
-          .dependsOn(sleepIsDynamicWallpaper),
-      //   └ 動的壁紙の前提の案内。X3 で RTC 無効なら押すと本体タブの「RTC 有効」へ移動
-      SettingInfo::Info(StrId::STR_DW_NEEDS_RTC, SettingAction::JumpToRtcSetting, StrId::STR_CAT_DISPLAY)
-          .dependsOn(dynamicWallpaperNeedsRtc),
-      SettingInfo::Info(StrId::STR_DW_NO_RTC_DEVICE, SettingAction::None, StrId::STR_CAT_DISPLAY)
-          .dependsOn(dynamicWallpaperNoRtcDevice),
-      //   └ カレンダーを重ねる（X3 かつ RTC 有効のとき）
-      SettingInfo::Toggle(StrId::STR_SLEEP_CALENDAR, &CrossPointSettings::sleepCalendar, "sleepCalendar",
-                          StrId::STR_CAT_DISPLAY)
-          .dependsOn(calendarAvailable),
-      //       └ カレンダー配置
+  // 1 項目ずつ足す。{ ... } の初期化子リストで並べると全項目の一時オブジェクトが一度にスタックに載り
+  // （約 7 KB）、8 KB の loopTask で設定画面・設定保存がスタックあふれで落ちた
+  std::vector<SettingInfo> v;
+  v.reserve(43);
+  // --- Display ---
+  // スリープ画面（親）
+  v.push_back(SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen,
+                                {StrId::STR_DARK, StrId::STR_LIGHT, StrId::STR_CUSTOM, StrId::STR_COVER,
+                                 StrId::STR_NONE_OPT, StrId::STR_COVER_CUSTOM, StrId::STR_DYNAMIC_WALLPAPER},
+                                "sleepScreen", StrId::STR_CAT_DISPLAY));
+  //   └ カバー: 収め方
+  v.push_back(SettingInfo::Enum(StrId::STR_SLEEP_COVER_MODE, &CrossPointSettings::sleepScreenCoverMode,
+                                {StrId::STR_FIT, StrId::STR_CROP}, "sleepScreenCoverMode", StrId::STR_CAT_DISPLAY)
+                  .dependsOn(sleepUsesCover));
+  //   └ カスタム・カバー: 画像フィルター
+  v.push_back(SettingInfo::Enum(StrId::STR_SLEEP_COVER_FILTER, &CrossPointSettings::sleepScreenCoverFilter,
+                                {StrId::STR_FILTER_GRAYSCALE, StrId::STR_FILTER_CONTRAST, StrId::STR_INVERTED},
+                                "sleepScreenCoverFilter", StrId::STR_CAT_DISPLAY)
+                  .dependsOn(sleepUsesBitmap));
+  //   └ 動的壁紙: 種類
+  v.push_back(SettingInfo::Enum(StrId::STR_DYNAMIC_WALLPAPER_STYLE, &CrossPointSettings::dynamicWallpaperStyle,
+                                {StrId::STR_DW_WATER_LEVEL, StrId::STR_DW_DOT_GRID, StrId::STR_DW_SQUARE_GRID},
+                                "dynamicWallpaperStyle", StrId::STR_CAT_DISPLAY)
+                  .dependsOn(sleepIsDynamicWallpaper));
+  //   └ 動的壁紙の前提の案内。X3 で RTC 無効なら押すと本体タブの「RTC 有効」へ移動
+  v.push_back(SettingInfo::Info(StrId::STR_DW_NEEDS_RTC, SettingAction::JumpToRtcSetting, StrId::STR_CAT_DISPLAY)
+                  .dependsOn(dynamicWallpaperNeedsRtc));
+  v.push_back(SettingInfo::Info(StrId::STR_DW_NO_RTC_DEVICE, SettingAction::None, StrId::STR_CAT_DISPLAY)
+                  .dependsOn(dynamicWallpaperNoRtcDevice));
+  //   └ カレンダーを重ねる（X3 かつ RTC 有効のとき）
+  v.push_back(SettingInfo::Toggle(StrId::STR_SLEEP_CALENDAR, &CrossPointSettings::sleepCalendar, "sleepCalendar",
+                                  StrId::STR_CAT_DISPLAY)
+                  .dependsOn(calendarAvailable));
+  //       └ カレンダー配置
+  v.push_back(
       SettingInfo::Enum(StrId::STR_SLEEP_CALENDAR_POSITION, &CrossPointSettings::sleepCalendarPosition,
                         {StrId::STR_CALENDAR_POS_TOP, StrId::STR_CALENDAR_POS_CENTER, StrId::STR_CALENDAR_POS_BOTTOM},
                         "sleepCalendarPosition", StrId::STR_CAT_DISPLAY)
-          .dependsOn(calendarOn, 2),
-      SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
-                        {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}, "hideBatteryPercentage",
-                        StrId::STR_CAT_DISPLAY),
-      SettingInfo::Enum(
-          StrId::STR_REFRESH_FREQ, &CrossPointSettings::refreshFrequency,
-          {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30},
-          "refreshFrequency", StrId::STR_CAT_DISPLAY),
-      SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
-                        {StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED, StrId::STR_THEME_VEGA}, "theme",
-                        StrId::STR_CAT_DISPLAY),
-      SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
-                          StrId::STR_CAT_DISPLAY),
-      SettingInfo::Enum(StrId::STR_COLOR_MODE, &CrossPointSettings::colorMode, {StrId::STR_LIGHT, StrId::STR_DARK},
-                        "colorMode", StrId::STR_CAT_DISPLAY),
+          .dependsOn(calendarOn, 2));
+  v.push_back(SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
+                                {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}, "hideBatteryPercentage",
+                                StrId::STR_CAT_DISPLAY));
+  v.push_back(SettingInfo::Enum(
+      StrId::STR_REFRESH_FREQ, &CrossPointSettings::refreshFrequency,
+      {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15, StrId::STR_PAGES_30},
+      "refreshFrequency", StrId::STR_CAT_DISPLAY));
+  v.push_back(SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
+                                {StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED, StrId::STR_THEME_VEGA}, "theme",
+                                StrId::STR_CAT_DISPLAY));
+  v.push_back(SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
+                                  StrId::STR_CAT_DISPLAY));
+  v.push_back(SettingInfo::Enum(StrId::STR_COLOR_MODE, &CrossPointSettings::colorMode,
+                                {StrId::STR_LIGHT, StrId::STR_DARK}, "colorMode", StrId::STR_CAT_DISPLAY));
+  v.push_back(
       SettingInfo::Enum(StrId::STR_UI_ORIENTATION, &CrossPointSettings::uiOrientation,
                         {StrId::STR_PORTRAIT, StrId::STR_INVERTED, StrId::STR_LANDSCAPE_CW, StrId::STR_LANDSCAPE_CCW},
-                        "uiOrientation", StrId::STR_CAT_DISPLAY),
-
-      // --- Reader ---
-      SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle, "embeddedStyle",
-                          StrId::STR_CAT_READER),
+                        "uiOrientation", StrId::STR_CAT_DISPLAY));
+  // --- Reader ---
+  v.push_back(SettingInfo::Toggle(StrId::STR_EMBEDDED_STYLE, &CrossPointSettings::embeddedStyle, "embeddedStyle",
+                                  StrId::STR_CAT_READER));
+  v.push_back(
       SettingInfo::Enum(StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
                         {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED, StrId::STR_LANDSCAPE_CCW},
-                        "orientation", StrId::STR_CAT_READER),
-      SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
-                        {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
-                        "imageRendering", StrId::STR_CAT_READER),
-      SettingInfo::Enum(StrId::STR_WRITING_MODE, &CrossPointSettings::writingMode,
-                        {StrId::STR_WM_AUTO, StrId::STR_WM_HORIZONTAL, StrId::STR_WM_VERTICAL}, "writingMode",
-                        StrId::STR_CAT_READER),
-      SettingInfo::Toggle(StrId::STR_INVERT_IMAGES, &CrossPointSettings::invertImages, "invertImages",
-                          StrId::STR_CAT_READER),
-      // 省メモリ（SdCardFont::LOAD_*）。変えると SD フォントを読み直し、章のレイアウトも作り直す
-      SettingInfo::Toggle(StrId::STR_KERN_LATIN_ONLY, &CrossPointSettings::kernLatinOnly, "kernLatinOnly",
-                          StrId::STR_CAT_READER),
-      SettingInfo::Toggle(StrId::STR_SYNTHETIC_BOLD, &CrossPointSettings::syntheticBold, "syntheticBold",
-                          StrId::STR_CAT_READER),
-
-      // --- Controls ---
-      SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
-                        {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV}, "sideButtonLayout", StrId::STR_CAT_CONTROLS),
-      SettingInfo::Toggle(StrId::STR_LONG_PRESS_SKIP, &CrossPointSettings::longPressChapterSkip, "longPressChapterSkip",
-                          StrId::STR_CAT_CONTROLS),
-      SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
-                        {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH},
-                        "shortPwrBtn", StrId::STR_CAT_CONTROLS),
-
-      // --- System ---
+                        "orientation", StrId::STR_CAT_READER));
+  v.push_back(SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
+                                {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
+                                "imageRendering", StrId::STR_CAT_READER));
+  v.push_back(SettingInfo::Enum(StrId::STR_WRITING_MODE, &CrossPointSettings::writingMode,
+                                {StrId::STR_WM_AUTO, StrId::STR_WM_HORIZONTAL, StrId::STR_WM_VERTICAL}, "writingMode",
+                                StrId::STR_CAT_READER));
+  v.push_back(SettingInfo::Toggle(StrId::STR_INVERT_IMAGES, &CrossPointSettings::invertImages, "invertImages",
+                                  StrId::STR_CAT_READER));
+  // 省メモリ（SdCardFont::LOAD_*）。変えると SD フォントを読み直し、章のレイアウトも作り直す
+  v.push_back(SettingInfo::Toggle(StrId::STR_KERN_LATIN_ONLY, &CrossPointSettings::kernLatinOnly, "kernLatinOnly",
+                                  StrId::STR_CAT_READER));
+  v.push_back(SettingInfo::Toggle(StrId::STR_SYNTHETIC_BOLD, &CrossPointSettings::syntheticBold, "syntheticBold",
+                                  StrId::STR_CAT_READER));
+  // --- Controls ---
+  v.push_back(SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
+                                {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV}, "sideButtonLayout",
+                                StrId::STR_CAT_CONTROLS));
+  v.push_back(SettingInfo::Toggle(StrId::STR_LONG_PRESS_SKIP, &CrossPointSettings::longPressChapterSkip,
+                                  "longPressChapterSkip", StrId::STR_CAT_CONTROLS));
+  v.push_back(SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
+                                {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH},
+                                "shortPwrBtn", StrId::STR_CAT_CONTROLS));
+  // --- System ---
+  v.push_back(
       SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                         {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30},
-                        "sleepTimeout", StrId::STR_CAT_SYSTEM),
-      // RTC（DS3231）を使うか。X3 のみ。スリープ中も時刻を保つが電池を消費する
+                        "sleepTimeout", StrId::STR_CAT_SYSTEM));
+  // RTC（DS3231）を使うか。X3 のみ。スリープ中も時刻を保つが電池を消費する
+  v.push_back(
       SettingInfo::Toggle(StrId::STR_RTC_ENABLED, &CrossPointSettings::rtcEnabled, "rtcEnabled", StrId::STR_CAT_SYSTEM)
-          .dependsOn(hasRtc, 0),
-      SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
-                          StrId::STR_CAT_SYSTEM),
-      SettingInfo::Toggle(StrId::STR_DEBUG_DISPLAY, &CrossPointSettings::debugDisplay, "debugDisplay",
-                          StrId::STR_CAT_SYSTEM),
-      // ラベル数は CrossPointSettings::OTA_CHANNEL_COUNT と一致させること。
-      // OtaUpdater.cpp の static_assert が enum 側のずれは検出するが、
-      // このラベル数（vector のサイズ）だけはコンパイル時に縛れない。
-      SettingInfo::Enum(StrId::STR_OTA_CHANNEL, &CrossPointSettings::otaChannel,
-                        {StrId::STR_OTA_CHANNEL_STABLE, StrId::STR_OTA_CHANNEL_RC, StrId::STR_OTA_CHANNEL_DEV},
-                        "otaChannel", StrId::STR_CAT_SYSTEM),
-
-      // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
-      SettingInfo::DynamicString(
-          StrId::STR_KOREADER_USERNAME, [] { return KOREADER_STORE.getUsername(); },
-          [](const std::string& v) {
-            KOREADER_STORE.setCredentials(v, KOREADER_STORE.getPassword());
-            KOREADER_STORE.saveToFile();
-          },
-          "koUsername", StrId::STR_KOREADER_SYNC),
-      SettingInfo::DynamicString(
-          StrId::STR_KOREADER_PASSWORD, [] { return KOREADER_STORE.getPassword(); },
-          [](const std::string& v) {
-            KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), v);
-            KOREADER_STORE.saveToFile();
-          },
-          "koPassword", StrId::STR_KOREADER_SYNC),
-      SettingInfo::DynamicString(
-          StrId::STR_SYNC_SERVER_URL, [] { return KOREADER_STORE.getServerUrl(); },
-          [](const std::string& v) {
-            KOREADER_STORE.setServerUrl(v);
-            KOREADER_STORE.saveToFile();
-          },
-          "koServerUrl", StrId::STR_KOREADER_SYNC),
-      SettingInfo::DynamicEnum(
-          StrId::STR_DOCUMENT_MATCHING, {StrId::STR_FILENAME, StrId::STR_BINARY},
-          [] { return static_cast<uint8_t>(KOREADER_STORE.getMatchMethod()); },
-          [](uint8_t v) {
-            KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(v));
-            KOREADER_STORE.saveToFile();
-          },
-          "koMatchMethod", StrId::STR_KOREADER_SYNC),
-
-      // --- OPDS Browser (web-only, uses CrossPointSettings char arrays) ---
-      SettingInfo::String(StrId::STR_OPDS_SERVER_URL, SETTINGS.opdsServerUrl, sizeof(SETTINGS.opdsServerUrl),
-                          "opdsServerUrl", StrId::STR_OPDS_BROWSER),
-      SettingInfo::String(StrId::STR_USERNAME, SETTINGS.opdsUsername, sizeof(SETTINGS.opdsUsername), "opdsUsername",
-                          StrId::STR_OPDS_BROWSER),
-      SettingInfo::String(StrId::STR_PASSWORD, SETTINGS.opdsPassword, sizeof(SETTINGS.opdsPassword), "opdsPassword",
-                          StrId::STR_OPDS_BROWSER)
-          .withObfuscated(),
-      // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
-      SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
-                          "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),
-      SettingInfo::Toggle(StrId::STR_BOOK_PROGRESS_PERCENTAGE, &CrossPointSettings::statusBarBookProgressPercentage,
-                          "statusBarBookProgressPercentage", StrId::STR_CUSTOMISE_STATUS_BAR),
-      SettingInfo::Enum(StrId::STR_PROGRESS_BAR, &CrossPointSettings::statusBarProgressBar,
-                        {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarProgressBar",
-                        StrId::STR_CUSTOMISE_STATUS_BAR),
+          .dependsOn(hasRtc, 0));
+  v.push_back(SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
+                                  StrId::STR_CAT_SYSTEM));
+  v.push_back(SettingInfo::Toggle(StrId::STR_DEBUG_DISPLAY, &CrossPointSettings::debugDisplay, "debugDisplay",
+                                  StrId::STR_CAT_SYSTEM));
+  // ラベル数は CrossPointSettings::OTA_CHANNEL_COUNT と一致させること。
+  // OtaUpdater.cpp の static_assert が enum 側のずれは検出するが、
+  // このラベル数（vector のサイズ）だけはコンパイル時に縛れない。
+  v.push_back(SettingInfo::Enum(StrId::STR_OTA_CHANNEL, &CrossPointSettings::otaChannel,
+                                {StrId::STR_OTA_CHANNEL_STABLE, StrId::STR_OTA_CHANNEL_RC, StrId::STR_OTA_CHANNEL_DEV},
+                                "otaChannel", StrId::STR_CAT_SYSTEM));
+  // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
+  v.push_back(SettingInfo::DynamicString(
+      StrId::STR_KOREADER_USERNAME, [] { return KOREADER_STORE.getUsername(); },
+      [](const std::string& v) {
+        KOREADER_STORE.setCredentials(v, KOREADER_STORE.getPassword());
+        KOREADER_STORE.saveToFile();
+      },
+      "koUsername", StrId::STR_KOREADER_SYNC));
+  v.push_back(SettingInfo::DynamicString(
+      StrId::STR_KOREADER_PASSWORD, [] { return KOREADER_STORE.getPassword(); },
+      [](const std::string& v) {
+        KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), v);
+        KOREADER_STORE.saveToFile();
+      },
+      "koPassword", StrId::STR_KOREADER_SYNC));
+  v.push_back(SettingInfo::DynamicString(
+      StrId::STR_SYNC_SERVER_URL, [] { return KOREADER_STORE.getServerUrl(); },
+      [](const std::string& v) {
+        KOREADER_STORE.setServerUrl(v);
+        KOREADER_STORE.saveToFile();
+      },
+      "koServerUrl", StrId::STR_KOREADER_SYNC));
+  v.push_back(SettingInfo::DynamicEnum(
+      StrId::STR_DOCUMENT_MATCHING, {StrId::STR_FILENAME, StrId::STR_BINARY},
+      [] { return static_cast<uint8_t>(KOREADER_STORE.getMatchMethod()); },
+      [](uint8_t v) {
+        KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(v));
+        KOREADER_STORE.saveToFile();
+      },
+      "koMatchMethod", StrId::STR_KOREADER_SYNC));
+  // --- OPDS Browser (web-only, uses CrossPointSettings char arrays) ---
+  v.push_back(SettingInfo::String(StrId::STR_OPDS_SERVER_URL, SETTINGS.opdsServerUrl, sizeof(SETTINGS.opdsServerUrl),
+                                  "opdsServerUrl", StrId::STR_OPDS_BROWSER));
+  v.push_back(SettingInfo::String(StrId::STR_USERNAME, SETTINGS.opdsUsername, sizeof(SETTINGS.opdsUsername),
+                                  "opdsUsername", StrId::STR_OPDS_BROWSER));
+  v.push_back(SettingInfo::String(StrId::STR_PASSWORD, SETTINGS.opdsPassword, sizeof(SETTINGS.opdsPassword),
+                                  "opdsPassword", StrId::STR_OPDS_BROWSER)
+                  .withObfuscated());
+  // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
+  v.push_back(SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
+                                  "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR));
+  v.push_back(SettingInfo::Toggle(StrId::STR_BOOK_PROGRESS_PERCENTAGE,
+                                  &CrossPointSettings::statusBarBookProgressPercentage,
+                                  "statusBarBookProgressPercentage", StrId::STR_CUSTOMISE_STATUS_BAR));
+  v.push_back(SettingInfo::Enum(StrId::STR_PROGRESS_BAR, &CrossPointSettings::statusBarProgressBar,
+                                {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarProgressBar",
+                                StrId::STR_CUSTOMISE_STATUS_BAR));
+  v.push_back(
       SettingInfo::Enum(StrId::STR_PROGRESS_BAR_THICKNESS, &CrossPointSettings::statusBarProgressBarThickness,
                         {StrId::STR_PROGRESS_BAR_THIN, StrId::STR_PROGRESS_BAR_MEDIUM, StrId::STR_PROGRESS_BAR_THICK},
-                        "statusBarProgressBarThickness", StrId::STR_CUSTOMISE_STATUS_BAR),
-      SettingInfo::Enum(StrId::STR_TITLE, &CrossPointSettings::statusBarTitle,
-                        {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarTitle",
-                        StrId::STR_CUSTOMISE_STATUS_BAR),
-      SettingInfo::Toggle(StrId::STR_BATTERY, &CrossPointSettings::statusBarBattery, "statusBarBattery",
-                          StrId::STR_CUSTOMISE_STATUS_BAR),
-  };
+                        "statusBarProgressBarThickness", StrId::STR_CUSTOMISE_STATUS_BAR));
+  v.push_back(SettingInfo::Enum(StrId::STR_TITLE, &CrossPointSettings::statusBarTitle,
+                                {StrId::STR_BOOK, StrId::STR_CHAPTER, StrId::STR_HIDE}, "statusBarTitle",
+                                StrId::STR_CUSTOMISE_STATUS_BAR));
+  v.push_back(SettingInfo::Toggle(StrId::STR_BATTERY, &CrossPointSettings::statusBarBattery, "statusBarBattery",
+                                  StrId::STR_CUSTOMISE_STATUS_BAR));
   // X3 only — show tilt page turn setting when the QMI8658 IMU is present.
   if (halTiltSensor.isAvailable()) {
     for (auto it = v.begin(); it != v.end(); ++it) {
