@@ -423,6 +423,12 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   if (!tocNavItem.empty()) {
     LOG_DBG("EBP", "Attempting to parse EPUB 3 nav document");
     tocParsed = parseTocNavFile();
+    // nav を読み終えても目次が 1 件も取れていなければ、読めなかったものとして NCX に切り替える
+    // （目次の印が無い・空の nav を「成功」扱いにすると、使える NCX があっても目次が出なくなる）
+    if (tocParsed && bookMetadataCache->getTocCount() == 0) {
+      LOG_DBG("EBP", "EPUB 3 nav yielded no TOC entries");
+      tocParsed = false;
+    }
   }
 
   // Fall back to NCX if nav parsing failed or wasn't available

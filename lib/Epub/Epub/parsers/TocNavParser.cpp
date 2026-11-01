@@ -71,7 +71,12 @@ void XMLCALL TocNavParser::startElement(void* userData, const XML_Char* name, co
   // Look for <nav epub:type="toc"> anywhere in body (or nested elements)
   if (self->state >= IN_BODY && strcmp(name, "nav") == 0) {
     for (int i = 0; atts[i]; i += 2) {
-      if ((strcmp(atts[i], "epub:type") == 0 || strcmp(atts[i], "type") == 0) && strcmp(atts[i + 1], "toc") == 0) {
+      // 名前空間の接頭辞は本によって違う（epub:type / ns0:type など。XML は名前空間を解釈しない作りなので
+      // 接頭辞つきの名前がそのまま来る）。":type" で終わる属性か、接頭辞なしの type を目次の印とみなす
+      const char* attr = atts[i];
+      const size_t attrLen = strlen(attr);
+      const bool isTypeAttr = strcmp(attr, "type") == 0 || (attrLen > 5 && strcmp(attr + attrLen - 5, ":type") == 0);
+      if (isTypeAttr && strcmp(atts[i + 1], "toc") == 0) {
         self->state = IN_NAV_TOC;
         LOG_DBG("NAV", "Found nav toc element");
         return;
